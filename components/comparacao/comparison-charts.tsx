@@ -17,10 +17,10 @@ import {
   Cell,
 } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { type ComparisonResult, formatBRL } from "@/lib/consortium-financing"
+import { type ComparacaoResult, formatBRL } from "@/lib/consortium-financing"
 
 interface Props {
-  result: ComparisonResult
+  result: ComparacaoResult
 }
 
 // ── axis / tooltip helpers ───────────────────────────────────────────────────

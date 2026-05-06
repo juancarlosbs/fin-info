@@ -1,3 +1,33 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared utilities
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function formatBRL(value: number): string {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value)
+}
+
+export function formatPct(value: number, decimals = 2): string {
+  return value.toFixed(decimals).replace(".", ",") + "%"
+}
+
+function pct(value: number): number {
+  return value / 100
+}
+
+function roundMoney(value: number): number {
+  return Math.round((Number.isFinite(value) ? value : 0) * 100) / 100
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── Main comparison engine (/comparacao route) ────────────────────────────────
+// Types prefixed with nothing — these are the detailed/extended versions.
+// ─────────────────────────────────────────────────────────────────────────────
+
 export type AmortizationSystem = "SAC" | "Price"
 
 export interface GeneralInputs {
@@ -9,7 +39,7 @@ export interface GeneralInputs {
   annualAssetAppreciation: number
 }
 
-export interface ConsortiumInputs {
+export interface DetailedConsortiumInputs {
   creditValue: number
   termMonths: number
   adminFeePercent: number
@@ -29,7 +59,7 @@ export interface ConsortiumInputs {
   lateMonths: number
 }
 
-export interface FinancingInputs {
+export interface DetailedFinancingInputs {
   assetValue: number
   downPayment: number
   termMonths: number
@@ -120,7 +150,7 @@ export interface Alert {
   message: string
 }
 
-export interface ComparisonResult {
+export interface ComparacaoResult {
   consortium: ConsortiumResults
   financing: FinancingResults
   totalCostDiff: number
@@ -136,8 +166,8 @@ export interface ComparisonResult {
   alerts: Alert[]
 }
 
-function calculateConsortium(
-  inputs: ConsortiumInputs,
+function calcDetailedConsortium(
+  inputs: DetailedConsortiumInputs,
   general: GeneralInputs
 ): ConsortiumResults {
   const {
@@ -234,8 +264,8 @@ function calculateConsortium(
   }
 }
 
-function calculateFinancing(
-  inputs: FinancingInputs,
+function calcDetailedFinancing(
+  inputs: DetailedFinancingInputs,
   _general: GeneralInputs
 ): FinancingResults {
   const {
@@ -282,7 +312,6 @@ function calculateFinancing(
   let firstInstallment = 0
   let lastInstallment = 0
 
-  // Price: compute fixed PMT on original balance (without indexer)
   let pmt = 0
   if (amortizationSystem === "Price" && monthlyRate > 0 && termMonths > 0) {
     const factor = Math.pow(1 + monthlyRate, termMonths)
@@ -292,10 +321,8 @@ function calculateFinancing(
   }
 
   for (let month = 1; month <= termMonths; month++) {
-    // Apply early payment at start of that month (before computing installment)
     if (earlyPaymentAmount > 0 && earlyPaymentMonth === month) {
       balance = Math.max(0, balance - earlyPaymentAmount)
-      // Recalc PMT for Price based on remaining balance and remaining months
       if (amortizationSystem === "Price") {
         const remaining = termMonths - month + 1
         if (remaining > 0 && monthlyRate > 0) {
@@ -308,16 +335,15 @@ function calculateFinancing(
     }
 
     let interest = 0
-    let amortization = 0
     let principalPayment = 0
 
     if (amortizationSystem === "SAC") {
-      amortization = financedValue / termMonths
+      const amortization = financedValue / termMonths
       interest = balance * monthlyRate
       principalPayment = Math.min(amortization, balance)
     } else {
       interest = balance * monthlyRate
-      amortization = pmt - interest
+      const amortization = pmt - interest
       principalPayment = Math.min(Math.max(0, amortization), balance)
     }
 
@@ -345,10 +371,8 @@ function calculateFinancing(
       amortization: principalPayment,
     })
 
-    // Apply annual indexer at end of each year (except final month)
     if (month % 12 === 0 && month < termMonths && annualIndexerPercent > 0) {
       balance *= 1 + annualIndexerPercent / 100
-      // Recalc PMT for Price
       if (amortizationSystem === "Price") {
         const remaining = termMonths - month
         if (remaining > 0 && monthlyRate > 0) {
@@ -441,22 +465,20 @@ function buildComparisonRows(
   return rows
 }
 
-function findBreakEven(rows: ComparisonRow[]): number | null {
+function findDetailedBreakEven(rows: ComparisonRow[]): number | null {
   for (let i = 1; i < rows.length; i++) {
     const prev = rows[i - 1].accumulatedDiff
     const curr = rows[i].accumulatedDiff
-    if (prev !== 0 && curr !== 0 && prev * curr < 0) {
-      return rows[i].month
-    }
+    if (prev !== 0 && curr !== 0 && prev * curr < 0) return rows[i].month
   }
   return null
 }
 
-function generateAlerts(
+function generateDetailedAlerts(
   general: GeneralInputs,
   consortium: ConsortiumResults,
   financing: FinancingResults,
-  consortiumInputs: ConsortiumInputs
+  consortiumInputs: DetailedConsortiumInputs
 ): Alert[] {
   const alerts: Alert[] = []
   const { monthlyIncome, maxIncomePercent, availableCash, needsImmediately } = general
@@ -518,9 +540,6 @@ function generateAlerts(
   }
 
   const consortiumInitialCash = consortiumInputs.ownBid + consortiumInputs.adhesionFee
-  const financingInitialCash =
-    financing.downPayment + financing.totalIOF + financing.totalFees
-
   if (availableCash > 0 && availableCash < consortiumInitialCash) {
     alerts.push({
       type: "warning",
@@ -538,7 +557,7 @@ function generateAlerts(
   if (consortiumInputs.annualAdjustmentPercent > 0) {
     alerts.push({
       type: "info",
-      message: `O reajuste anual de ${consortiumInputs.annualAdjustmentPercent}% ao ano no consórcio eleva as parcelas progressivamente. Considere simular sem reajuste para ver o impacto.`,
+      message: `O reajuste anual de ${consortiumInputs.annualAdjustmentPercent}% ao ano no consórcio eleva as parcelas progressivamente.`,
     })
   }
 
@@ -552,7 +571,7 @@ function generateAlerts(
   return alerts
 }
 
-function generateConclusion(
+function generateDetailedConclusion(
   general: GeneralInputs,
   consortium: ConsortiumResults,
   financing: FinancingResults,
@@ -581,7 +600,7 @@ function generateConclusion(
     }
   }
 
-  text += `\n\nNo consórcio, a carta é de ${formatBRL(financing.financedValue + financing.downPayment)} e o custo total estimado será de ${formatBRL(cCost)}. `
+  text += `\n\nNo consórcio, a carta é de ${formatBRL(consortium.liquidCredit)} e o custo total estimado será de ${formatBRL(cCost)}. `
   text += `Isso representa ${formatBRL(cCost - consortium.liquidCredit)} a mais, ou ${consortium.percentAboveCredit.toFixed(2)}% acima da carta de crédito. `
   text += `\n\nNo financiamento, você pegou ${formatBRL(financing.financedValue)} e pagará ${formatBRL(fCost)} ao final. `
   text += `Isso representa ${formatBRL(fCost - financing.downPayment - financing.financedValue)} a mais, ou ${financing.percentAboveFinanced.toFixed(2)}% acima do valor financiado.`
@@ -597,17 +616,16 @@ function generateConclusion(
 
 export function calculateComparison(
   general: GeneralInputs,
-  consortiumInputs: ConsortiumInputs,
-  financingInputs: FinancingInputs
-): ComparisonResult {
-  const consortium = calculateConsortium(consortiumInputs, general)
-  const financing = calculateFinancing(financingInputs, general)
+  consortiumInputs: DetailedConsortiumInputs,
+  financingInputs: DetailedFinancingInputs
+): ComparacaoResult {
+  const consortium = calcDetailedConsortium(consortiumInputs, general)
+  const financing = calcDetailedFinancing(financingInputs, general)
 
   const totalMonths = Math.max(consortiumInputs.termMonths, financingInputs.termMonths)
-  const cRows = consortium.rows
-  const fRows = financing.rows
+  const cRows = [...consortium.rows]
+  const fRows = [...financing.rows]
 
-  // Pad shorter rows so comparison table aligns
   while (cRows.length < totalMonths) {
     const last = cRows[cRows.length - 1]
     cRows.push({ month: last.month + 1, installment: 0, cumulativePaid: last.cumulativePaid })
@@ -625,8 +643,7 @@ export function calculateComparison(
   }
 
   const rows = buildComparisonRows(cRows, fRows, consortiumInputs.creditValue, financing.financedValue)
-  const breakEvenMonth = findBreakEven(rows)
-
+  const breakEvenMonth = findDetailedBreakEven(rows)
   const totalCostDiff = financing.totalCost - consortium.totalCost
 
   let betterTotalCost: "Consórcio" | "Financiamento" | "Empate"
@@ -642,18 +659,13 @@ export function calculateComparison(
 
   const consortiumInitialCash = consortiumInputs.ownBid + consortiumInputs.adhesionFee
   const financingInitialCash = financing.downPayment + financing.totalIOF + financing.totalFees
-
   const consortiumIncomePercent =
-    general.monthlyIncome > 0
-      ? (consortium.firstInstallment / general.monthlyIncome) * 100
-      : 0
+    general.monthlyIncome > 0 ? (consortium.firstInstallment / general.monthlyIncome) * 100 : 0
   const financingIncomePercent =
-    general.monthlyIncome > 0
-      ? (financing.firstInstallment / general.monthlyIncome) * 100
-      : 0
+    general.monthlyIncome > 0 ? (financing.firstInstallment / general.monthlyIncome) * 100 : 0
 
-  const conclusion = generateConclusion(general, consortium, financing, breakEvenMonth)
-  const alerts = generateAlerts(general, consortium, financing, consortiumInputs)
+  const conclusion = generateDetailedConclusion(general, consortium, financing, breakEvenMonth)
+  const alerts = generateDetailedAlerts(general, consortium, financing, consortiumInputs)
 
   return {
     consortium,
@@ -672,15 +684,393 @@ export function calculateComparison(
   }
 }
 
-export function formatBRL(value: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value)
+// ─────────────────────────────────────────────────────────────────────────────
+// ── consortium-financing-comparison engine (/consortium-financing-comparison) ─
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type FinancingSystem = "sac" | "price"
+export type Urgency = "yes" | "no"
+
+export interface GeneralComparisonInputs {
+  assetValue: number
+  termMonths: number
+  monthlyIncome: number
+  availableToday: number
+  needsAssetImmediately: boolean
+  maxIncomeCommitmentPct: number
+  annualAssetAdjustmentPct: number
 }
 
-export function formatPct(value: number, decimals = 2): string {
-  return value.toFixed(decimals).replace(".", ",") + "%"
+export interface ConsortiumInputs {
+  creditValue: number
+  termMonths: number
+  administrationFeePct: number
+  reserveFundPct: number
+  monthlyInsurance: number
+  ownBid: number
+  embeddedBidPct: number
+  estimatedContemplationMonth: number
+  extraCosts: number
+  lateMonths: number
+  lateFeePct: number
+}
+
+export interface EarlyAmortizationInput {
+  month: number
+  amount: number
+}
+
+export interface FinancingInputs {
+  downPayment: number
+  financedAmount: number
+  termMonths: number
+  monthlyInterestPct: number
+  system: FinancingSystem
+  iofPct: number
+  monthlyInsurance: number
+  monthlyFees: number
+  extraCosts: number
+  indexerAnnualPct: number
+  lateMonths: number
+  lateFeePct: number
+  earlyAmortization: EarlyAmortizationInput
+}
+
+export interface ComparisonInputs {
+  general: GeneralComparisonInputs
+  consortium: ConsortiumInputs
+  financing: FinancingInputs
+}
+
+export interface ConsortiumMonthlyLine {
+  month: number
+  installment: number
+  totalPaid: number
+  assetReferenceValue: number
+  differenceVsCredit: number
+  differencePctVsCredit: number
+  liquidCredit: number
+  complementNeeded: number
+}
+
+export interface FinancingMonthlyLine {
+  month: number
+  installment: number
+  totalPaid: number
+  debtBalance: number
+  differenceVsFinancedAmount: number
+  differencePctVsFinancedAmount: number
+  interest: number
+  amortization: number
+}
+
+export interface ComparisonMonthlyLine {
+  month: number
+  consortiumInstallment: number
+  consortiumTotalPaid: number
+  consortiumDifferenceVsCredit: number
+  consortiumDifferencePctVsCredit: number
+  financingInstallment: number
+  financingTotalPaid: number
+  debtBalance: number
+  financingDifferenceVsAmount: number
+  financingDifferencePctVsAmount: number
+  accumulatedDifference: number
+  bestUntilMonth: "Consórcio" | "Financiamento" | "Empate"
+  isConsortiumReferenceExceeded: boolean
+  isFinancingReferenceExceeded: boolean
+  isTurningPoint: boolean
+}
+
+export interface ConsortiumResult {
+  totalCost: number
+  initialCashNeeded: number
+  firstInstallment: number
+  maxInstallment: number
+  liquidCredit: number
+  complementNeeded: number
+  monthlyLines: ConsortiumMonthlyLine[]
+  referenceExceededMonth: number | null
+  costComposition: { label: string; value: number }[]
+}
+
+export interface FinancingResult {
+  totalCost: number
+  initialCashNeeded: number
+  firstInstallment: number
+  maxInstallment: number
+  monthlyLines: FinancingMonthlyLine[]
+  referenceExceededMonth: number | null
+  costComposition: { label: string; value: number }[]
+}
+
+export interface ComparisonResult {
+  inputs: ComparisonInputs
+  consortium: ConsortiumResult
+  financing: FinancingResult
+  monthlyLines: ComparisonMonthlyLine[]
+  totalDifference: number
+  totalDifferencePct: number
+  bestByTotalCost: "Consórcio" | "Financiamento" | "Empate"
+  lowestInitialInstallment: "Consórcio" | "Financiamento" | "Empate"
+  bestForUrgency: "Consórcio" | "Financiamento"
+  bestForWaiting: "Consórcio" | "Financiamento"
+  breakEvenMonth: number | null
+  incomeCommitment: {
+    consortiumFirstPct: number
+    consortiumMaxPct: number
+    financingFirstPct: number
+    financingMaxPct: number
+  }
+  alerts: string[]
+}
+
+function getAdjustedAssetValue(baseValue: number, annualAdjustmentPct: number, month: number): number {
+  const yearsElapsed = Math.floor((month - 1) / 12)
+  return baseValue * Math.pow(1 + pct(annualAdjustmentPct), yearsElapsed)
+}
+
+function calculateConsortium(general: GeneralComparisonInputs, input: ConsortiumInputs): ConsortiumResult {
+  const term = Math.max(1, Math.floor(input.termMonths || general.termMonths))
+  const baseCommonFund = input.creditValue / term
+  const adminMonthly = (input.creditValue * pct(input.administrationFeePct)) / term
+  const reserveMonthly = (input.creditValue * pct(input.reserveFundPct)) / term
+  const embeddedBid = input.creditValue * pct(input.embeddedBidPct)
+  const liquidCredit = Math.max(0, input.creditValue - embeddedBid)
+  const contemplatedAssetValue = getAdjustedAssetValue(
+    general.assetValue,
+    general.annualAssetAdjustmentPct,
+    input.estimatedContemplationMonth
+  )
+  const complementNeeded = Math.max(0, contemplatedAssetValue - liquidCredit)
+
+  const monthlyLines: ConsortiumMonthlyLine[] = []
+  let totalPaid = input.extraCosts + input.ownBid + complementNeeded
+  let referenceExceededMonth: number | null = null
+  let totalCommonFund = 0
+  let totalAdmin = 0
+  let totalReserve = 0
+  let totalInsurance = 0
+  let totalLateFees = 0
+
+  for (let month = 1; month <= term; month++) {
+    const adjustedCredit = getAdjustedAssetValue(input.creditValue, general.annualAssetAdjustmentPct, month)
+    const adjustmentMultiplier = adjustedCredit / input.creditValue
+    const commonFund = baseCommonFund * adjustmentMultiplier
+    const admin = adminMonthly * adjustmentMultiplier
+    const reserve = reserveMonthly * adjustmentMultiplier
+    const lateFee = month <= input.lateMonths ? (commonFund + admin + reserve + input.monthlyInsurance) * pct(input.lateFeePct) : 0
+    const installment = commonFund + admin + reserve + input.monthlyInsurance + lateFee
+
+    totalCommonFund += commonFund
+    totalAdmin += admin
+    totalReserve += reserve
+    totalInsurance += input.monthlyInsurance
+    totalLateFees += lateFee
+    totalPaid += installment
+
+    const differenceVsCredit = totalPaid - adjustedCredit
+    if (referenceExceededMonth === null && totalPaid >= adjustedCredit) referenceExceededMonth = month
+
+    monthlyLines.push({
+      month,
+      installment: roundMoney(installment),
+      totalPaid: roundMoney(totalPaid),
+      assetReferenceValue: roundMoney(adjustedCredit),
+      differenceVsCredit: roundMoney(differenceVsCredit),
+      differencePctVsCredit: adjustedCredit > 0 ? differenceVsCredit / adjustedCredit : 0,
+      liquidCredit: roundMoney(liquidCredit),
+      complementNeeded: roundMoney(complementNeeded),
+    })
+  }
+
+  return {
+    totalCost: roundMoney(totalPaid),
+    initialCashNeeded: roundMoney(input.ownBid + input.extraCosts + complementNeeded),
+    firstInstallment: monthlyLines[0]?.installment ?? 0,
+    maxInstallment: Math.max(...monthlyLines.map((line) => line.installment)),
+    liquidCredit: roundMoney(liquidCredit),
+    complementNeeded: roundMoney(complementNeeded),
+    monthlyLines,
+    referenceExceededMonth,
+    costComposition: [
+      { label: "Fundo comum", value: roundMoney(totalCommonFund) },
+      { label: "Taxa adm.", value: roundMoney(totalAdmin) },
+      { label: "Fundo reserva", value: roundMoney(totalReserve) },
+      { label: "Seguro", value: roundMoney(totalInsurance) },
+      { label: "Lances", value: roundMoney(input.ownBid) },
+      { label: "Complemento", value: roundMoney(complementNeeded) },
+      { label: "Extras/atraso", value: roundMoney(input.extraCosts + totalLateFees) },
+    ],
+  }
+}
+
+function calculateFinancing(input: FinancingInputs): FinancingResult {
+  const term = Math.max(1, Math.floor(input.termMonths))
+  const monthlyRate = pct(input.monthlyInterestPct)
+  const monthlyIndexer = Math.pow(1 + pct(input.indexerAnnualPct), 1 / 12) - 1
+  let balance = input.financedAmount * (1 + pct(input.iofPct))
+  const originalFinancedWithIof = balance
+  const fixedPriceInstallment = monthlyRate > 0
+    ? (balance * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -term))
+    : balance / term
+
+  let totalPaid = input.downPayment + input.extraCosts
+  let referenceExceededMonth: number | null = null
+  let totalInterest = 0
+  let totalInsurance = 0
+  let totalFees = 0
+  let totalLateFees = 0
+  let totalAmortization = 0
+  const monthlyLines: FinancingMonthlyLine[] = []
+
+  for (let month = 1; month <= term; month++) {
+    if (balance <= 0) {
+      monthlyLines.push({
+        month,
+        installment: 0,
+        totalPaid: roundMoney(totalPaid),
+        debtBalance: 0,
+        differenceVsFinancedAmount: roundMoney(totalPaid - input.financedAmount),
+        differencePctVsFinancedAmount: input.financedAmount > 0 ? (totalPaid - input.financedAmount) / input.financedAmount : 0,
+        interest: 0,
+        amortization: 0,
+      })
+      continue
+    }
+
+    balance *= 1 + monthlyIndexer
+    const interest = balance * monthlyRate
+    const baseAmortization = input.system === "sac"
+      ? originalFinancedWithIof / term
+      : Math.max(0, fixedPriceInstallment - interest)
+    const scheduledAmortization = Math.min(balance, baseAmortization)
+    const earlyAmortization = month === input.earlyAmortization.month ? Math.min(balance - scheduledAmortization, input.earlyAmortization.amount) : 0
+    const amortization = Math.max(0, scheduledAmortization + earlyAmortization)
+    const lateFeeBase = interest + scheduledAmortization + input.monthlyInsurance + input.monthlyFees
+    const lateFee = month <= input.lateMonths ? lateFeeBase * pct(input.lateFeePct) : 0
+    const installment = interest + scheduledAmortization + earlyAmortization + input.monthlyInsurance + input.monthlyFees + lateFee
+
+    balance = Math.max(0, balance + interest - amortization)
+    totalPaid += installment
+    totalInterest += interest
+    totalInsurance += input.monthlyInsurance
+    totalFees += input.monthlyFees
+    totalLateFees += lateFee
+    totalAmortization += earlyAmortization
+    if (referenceExceededMonth === null && totalPaid >= input.financedAmount) referenceExceededMonth = month
+
+    monthlyLines.push({
+      month,
+      installment: roundMoney(installment),
+      totalPaid: roundMoney(totalPaid),
+      debtBalance: roundMoney(balance),
+      differenceVsFinancedAmount: roundMoney(totalPaid - input.financedAmount),
+      differencePctVsFinancedAmount: input.financedAmount > 0 ? (totalPaid - input.financedAmount) / input.financedAmount : 0,
+      interest: roundMoney(interest),
+      amortization: roundMoney(scheduledAmortization + earlyAmortization),
+    })
+  }
+
+  return {
+    totalCost: roundMoney(totalPaid),
+    initialCashNeeded: roundMoney(input.downPayment + input.extraCosts),
+    firstInstallment: monthlyLines[0]?.installment ?? 0,
+    maxInstallment: Math.max(...monthlyLines.map((line) => line.installment)),
+    monthlyLines,
+    referenceExceededMonth,
+    costComposition: [
+      { label: "Entrada", value: roundMoney(input.downPayment) },
+      { label: "Principal/IOF", value: roundMoney(originalFinancedWithIof) },
+      { label: "Juros", value: roundMoney(totalInterest) },
+      { label: "Seguros", value: roundMoney(totalInsurance) },
+      { label: "Tarifas", value: roundMoney(totalFees) },
+      { label: "Amort. extra", value: roundMoney(totalAmortization) },
+      { label: "Extras/atraso", value: roundMoney(input.extraCosts + totalLateFees) },
+    ],
+  }
+}
+
+function compareLabel(a: number, b: number): "Consórcio" | "Financiamento" | "Empate" {
+  const diff = Math.abs(a - b)
+  if (diff < 0.01) return "Empate"
+  return a < b ? "Consórcio" : "Financiamento"
+}
+
+export function calculateConsortiumFinancingComparison(inputs: ComparisonInputs): ComparisonResult {
+  const consortium = calculateConsortium(inputs.general, inputs.consortium)
+  const financing = calculateFinancing(inputs.financing)
+  const maxMonths = Math.max(consortium.monthlyLines.length, financing.monthlyLines.length)
+  const monthlyLines: ComparisonMonthlyLine[] = []
+  let breakEvenMonth: number | null = null
+  let previousBest: "Consórcio" | "Financiamento" | "Empate" | null = null
+
+  for (let i = 0; i < maxMonths; i++) {
+    const month = i + 1
+    const c = consortium.monthlyLines[i] ?? consortium.monthlyLines[consortium.monthlyLines.length - 1]
+    const f = financing.monthlyLines[i] ?? financing.monthlyLines[financing.monthlyLines.length - 1]
+    const accumulatedDifference = c.totalPaid - f.totalPaid
+    const bestUntilMonth = compareLabel(c.totalPaid, f.totalPaid)
+    const isTurningPoint = previousBest !== null && bestUntilMonth !== "Empate" && previousBest !== bestUntilMonth
+    if (isTurningPoint && breakEvenMonth === null) breakEvenMonth = month
+    if (bestUntilMonth !== "Empate") previousBest = bestUntilMonth
+
+    monthlyLines.push({
+      month,
+      consortiumInstallment: c.month === month ? c.installment : 0,
+      consortiumTotalPaid: c.totalPaid,
+      consortiumDifferenceVsCredit: c.differenceVsCredit,
+      consortiumDifferencePctVsCredit: c.differencePctVsCredit,
+      financingInstallment: f.month === month ? f.installment : 0,
+      financingTotalPaid: f.totalPaid,
+      debtBalance: f.debtBalance,
+      financingDifferenceVsAmount: f.differenceVsFinancedAmount,
+      financingDifferencePctVsAmount: f.differencePctVsFinancedAmount,
+      accumulatedDifference: roundMoney(accumulatedDifference),
+      bestUntilMonth,
+      isConsortiumReferenceExceeded: consortium.referenceExceededMonth === month,
+      isFinancingReferenceExceeded: financing.referenceExceededMonth === month,
+      isTurningPoint,
+    })
+  }
+
+  const totalDifference = consortium.totalCost - financing.totalCost
+  const totalDifferencePct = financing.totalCost > 0 ? totalDifference / financing.totalCost : 0
+  const bestByTotalCost = compareLabel(consortium.totalCost, financing.totalCost)
+  const lowestInitialInstallment = compareLabel(consortium.firstInstallment, financing.firstInstallment)
+  const bestForUrgency = inputs.general.needsAssetImmediately ? "Financiamento" : bestByTotalCost === "Financiamento" ? "Financiamento" : "Consórcio"
+  const bestForWaiting = bestByTotalCost === "Financiamento" ? "Financiamento" : "Consórcio"
+  const income = inputs.general.monthlyIncome || 1
+  const incomeCommitment = {
+    consortiumFirstPct: consortium.firstInstallment / income,
+    consortiumMaxPct: consortium.maxInstallment / income,
+    financingFirstPct: financing.firstInstallment / income,
+    financingMaxPct: financing.maxInstallment / income,
+  }
+
+  const alerts: string[] = []
+  const maxCommitment = pct(inputs.general.maxIncomeCommitmentPct)
+  if (inputs.general.needsAssetImmediately) alerts.push("Você informou necessidade imediata do bem; consórcio depende de contemplação e pode não atender à urgência.")
+  if (incomeCommitment.consortiumMaxPct > maxCommitment) alerts.push("A maior parcela do consórcio ultrapassa o percentual máximo de renda informado.")
+  if (incomeCommitment.financingMaxPct > maxCommitment) alerts.push("A maior parcela do financiamento ultrapassa o percentual máximo de renda informado.")
+  if (inputs.general.availableToday < Math.min(consortium.initialCashNeeded, financing.initialCashNeeded)) alerts.push("O valor disponível hoje pode ser insuficiente para a opção com menor desembolso inicial.")
+  if (inputs.consortium.embeddedBidPct > 0) alerts.push("O lance embutido reduz o crédito líquido e pode exigir complemento para comprar o bem.")
+  if (inputs.financing.indexerAnnualPct > 0 || inputs.general.annualAssetAdjustmentPct > 0) alerts.push("Reajustes e indexadores são estimativas; variações reais podem alterar bastante o resultado.")
+  if (breakEvenMonth) alerts.push(`Há ponto de virada estimado no mês ${breakEvenMonth}, quando a melhor opção acumulada muda.`)
+
+  return {
+    inputs,
+    consortium,
+    financing,
+    monthlyLines,
+    totalDifference: roundMoney(totalDifference),
+    totalDifferencePct,
+    bestByTotalCost,
+    lowestInitialInstallment,
+    bestForUrgency,
+    bestForWaiting,
+    breakEvenMonth,
+    incomeCommitment,
+    alerts,
+  }
 }

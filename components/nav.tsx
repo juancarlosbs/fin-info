@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 const links = [
   { href: "/", label: "Juros Compostos" },
   { href: "/comparacao", label: "Consórcio vs Financiamento" },
+  { href: "/consortium-financing-comparison", label: "Consórcio x Financiamento" },
 ]
 
 export function Nav() {

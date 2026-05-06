@@ -17,10 +17,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
-import { type ComparisonResult, formatBRL, formatPct } from "@/lib/consortium-financing"
+import { type ComparacaoResult, formatBRL, formatPct } from "@/lib/consortium-financing"
 
 interface Props {
-  result: ComparisonResult
+  result: ComparacaoResult
 }
 
 function StatRow({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -326,7 +326,7 @@ export function ComparisonResults({ result }: Props) {
   )
 }
 
-function buildTextSummary(result: ComparisonResult): string {
+function buildTextSummary(result: ComparacaoResult): string {
   const { consortium, financing, betterTotalCost, breakEvenMonth } = result
   const lines: string[] = [
     `=== COMPARAÇÃO: CONSÓRCIO VS FINANCIAMENTO ===`,
