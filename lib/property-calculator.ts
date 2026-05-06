@@ -9,12 +9,56 @@ export interface PropertyInputs {
   monthlyBudget: number       // orçamento mensal total disponível
 }
 
+export interface RentInvestSnap {
+  correctedRent: number
+  monthlyInvestment: number
+  portfolio: number
+  totalPaid: number
+}
+
+export interface FinanceInvestSnap {
+  payment: number
+  interest: number
+  principal: number
+  monthlyInvestment: number
+  propertyValue: number
+  remainingDebt: number
+  portfolio: number
+  totalPaid: number
+}
+
+export interface FinanceOnlySnap {
+  payment: number
+  interest: number
+  principal: number
+  propertyValue: number
+  remainingDebt: number
+  totalPaid: number
+}
+
+export interface FinanceAmortizeSnap {
+  regularPayment: number
+  interest: number
+  scheduledPrincipal: number
+  extraAmortization: number
+  monthlyInvestment: number
+  propertyValue: number
+  remainingDebt: number
+  portfolio: number
+  totalPaid: number
+  paidOff: boolean
+}
+
 export interface MonthlySnap {
   month: number
   rentInvest: number      // patrimônio líquido cenário 1
   financeInvest: number   // patrimônio líquido cenário 2
   financeOnly: number     // patrimônio líquido cenário 3
   financeAmortize: number // patrimônio líquido cenário 4
+  rentInvestDetails: RentInvestSnap
+  financeInvestDetails: FinanceInvestSnap
+  financeOnlyDetails: FinanceOnlySnap
+  financeAmortizeDetails: FinanceAmortizeSnap
 }
 
 export interface ScenarioSummary {
@@ -79,50 +123,70 @@ export function calculatePropertyScenarios(inputs: PropertyInputs): PropertyResu
 
   // ── Cenário 4: Financiar e Amortizar ───────────────────────────────────────
   let c4Balance = loanAmount
+  let c4Portfolio = 0
   let c4TotalPaid = downPayment
   let c4PropertyValue = propertyPrice
   let c4PaidOffMonth: number | null = null
 
   for (let month = 1; month <= totalMonths; month++) {
+    const correctedRent = monthlyRent * Math.pow(1 + monthlyAppRate, month - 1)
+
     // — Cenário 1 —
-    const c1MonthlyInvest = Math.max(0, monthlyBudget - monthlyRent)
+    const c1MonthlyInvest = Math.max(0, monthlyBudget - correctedRent)
     c1Portfolio = c1Portfolio * (1 + monthlyInvRate) + c1MonthlyInvest
-    c1TotalPaid += monthlyRent + c1MonthlyInvest
+    c1TotalPaid += correctedRent + c1MonthlyInvest
 
     // — Cenário 2 —
     const c2Interest = c2Balance * monthlyFinRate
-    const c2Payment = Math.min(sacPrincipal + c2Interest, c2Balance + c2Interest)
+    const c2Principal = Math.min(sacPrincipal, c2Balance)
+    const c2Payment = c2Principal + c2Interest
     const c2Surplus = Math.max(0, monthlyBudget - c2Payment)
     c2Portfolio = c2Portfolio * (1 + monthlyInvRate) + c2Surplus
-    c2Balance = Math.max(0, c2Balance - sacPrincipal)
+    c2Balance = Math.max(0, c2Balance - c2Principal)
     c2PropertyValue *= 1 + monthlyAppRate
     c2TotalPaid += c2Payment
 
     // — Cenário 3 —
     const c3Interest = c3Balance * monthlyFinRate
-    const c3Payment = Math.min(sacPrincipal + c3Interest, c3Balance + c3Interest)
-    c3Balance = Math.max(0, c3Balance - sacPrincipal)
+    const c3Principal = Math.min(sacPrincipal, c3Balance)
+    const c3Payment = c3Principal + c3Interest
+    c3Balance = Math.max(0, c3Balance - c3Principal)
     c3PropertyValue *= 1 + monthlyAppRate
     c3TotalPaid += c3Payment
 
     // — Cenário 4 —
-    let c4Wealth: number
+    c4Portfolio *= 1 + monthlyInvRate
+    let c4RegularPayment = 0
+    let c4Interest = 0
+    let c4ScheduledPrincipal = 0
+    let c4ExtraAmortization = 0
+    let c4MonthlyInvestment = 0
+
     if (c4Balance <= 0) {
-      // já quitou: sobra vai acumular como portfólio (mas no cenário 4 amortiza)
-      c4PropertyValue *= 1 + monthlyAppRate
-      c4Wealth = c4PropertyValue
+      // Já quitou: o orçamento que deixou de ir para parcelas vira patrimônio investido.
+      c4MonthlyInvestment = monthlyBudget
+      c4Portfolio += c4MonthlyInvestment
+      c4TotalPaid += c4MonthlyInvestment
     } else {
-      const c4Interest = c4Balance * monthlyFinRate
-      const c4RegPayment = sacPrincipal + c4Interest
-      const c4Extra = Math.max(0, monthlyBudget - c4RegPayment)
-      c4TotalPaid += Math.min(c4RegPayment, c4Balance + c4Interest) + Math.min(c4Extra, c4Balance)
-      c4Balance = Math.max(0, c4Balance - sacPrincipal - c4Extra)
+      c4Interest = c4Balance * monthlyFinRate
+      c4ScheduledPrincipal = Math.min(sacPrincipal, c4Balance)
+      c4RegularPayment = c4ScheduledPrincipal + c4Interest
+      const balanceAfterScheduledPrincipal = Math.max(0, c4Balance - c4ScheduledPrincipal)
+      const monthlySurplus = Math.max(0, monthlyBudget - c4RegularPayment)
+      c4ExtraAmortization = Math.min(monthlySurplus, balanceAfterScheduledPrincipal)
+      c4MonthlyInvestment = Math.max(0, monthlySurplus - c4ExtraAmortization)
+
+      c4Balance = Math.max(0, balanceAfterScheduledPrincipal - c4ExtraAmortization)
+      c4Portfolio += c4MonthlyInvestment
+      c4TotalPaid += c4RegularPayment + c4ExtraAmortization + c4MonthlyInvestment
+
       if (c4Balance === 0 && c4PaidOffMonth === null) {
         c4PaidOffMonth = month
       }
-      c4PropertyValue *= 1 + monthlyAppRate
-      c4Wealth = c4PropertyValue - c4Balance
     }
+
+    c4PropertyValue *= 1 + monthlyAppRate
+    const c4Wealth = c4PropertyValue - c4Balance + c4Portfolio
 
     breakdown.push({
       month,
@@ -130,6 +194,42 @@ export function calculatePropertyScenarios(inputs: PropertyInputs): PropertyResu
       financeInvest: c2PropertyValue - c2Balance + c2Portfolio,
       financeOnly: c3PropertyValue - c3Balance,
       financeAmortize: c4Wealth,
+      rentInvestDetails: {
+        correctedRent,
+        monthlyInvestment: c1MonthlyInvest,
+        portfolio: c1Portfolio,
+        totalPaid: c1TotalPaid,
+      },
+      financeInvestDetails: {
+        payment: c2Payment,
+        interest: c2Interest,
+        principal: c2Principal,
+        monthlyInvestment: c2Surplus,
+        propertyValue: c2PropertyValue,
+        remainingDebt: c2Balance,
+        portfolio: c2Portfolio,
+        totalPaid: c2TotalPaid,
+      },
+      financeOnlyDetails: {
+        payment: c3Payment,
+        interest: c3Interest,
+        principal: c3Principal,
+        propertyValue: c3PropertyValue,
+        remainingDebt: c3Balance,
+        totalPaid: c3TotalPaid,
+      },
+      financeAmortizeDetails: {
+        regularPayment: c4RegularPayment,
+        interest: c4Interest,
+        scheduledPrincipal: c4ScheduledPrincipal,
+        extraAmortization: c4ExtraAmortization,
+        monthlyInvestment: c4MonthlyInvestment,
+        propertyValue: c4PropertyValue,
+        remainingDebt: c4Balance,
+        portfolio: c4Portfolio,
+        totalPaid: c4TotalPaid,
+        paidOff: c4Balance === 0,
+      },
     })
   }
 
@@ -160,10 +260,10 @@ export function calculatePropertyScenarios(inputs: PropertyInputs): PropertyResu
         paidOffMonth: null,
       },
       financeAmortize: {
-        finalWealth: c4PropertyValue - c4Balance,
+        finalWealth: c4PropertyValue - c4Balance + c4Portfolio,
         propertyValue: c4PropertyValue,
         remainingDebt: c4Balance,
-        portfolio: 0,
+        portfolio: c4Portfolio,
         totalPaid: c4TotalPaid,
         paidOffMonth: c4PaidOffMonth,
       },
