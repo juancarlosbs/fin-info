@@ -11,7 +11,7 @@ const baseUrl = siteUrl.startsWith("http")
   ? siteUrl.replace(/\/$/, "")
   : `https://${siteUrl}`
 
-const staticRoutes = ["/"]
+const staticRoutes = ["/", "/consortium-financing-comparison"]
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return staticRoutes.map((route) => ({
