@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Calculator } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -103,6 +103,7 @@ export function CalculatorForm() {
   const [periodType, setPeriodType] = useState<PeriodType>("years")
   const [errors, setErrors] = useState<FormErrors>({})
   const [submitted, setSubmitted] = useState(false)
+  const resultsRef = useRef<HTMLDivElement>(null)
 
   const result = useMemo(() => {
     if (!submitted) return null
@@ -118,6 +119,12 @@ export function CalculatorForm() {
       periodType,
     })
   }, [submitted, values, rateType, periodType])
+
+  useEffect(() => {
+    if (result && resultsRef.current) {
+      resultsRef.current.scrollIntoView({ behavior: "smooth", block: "start" })
+    }
+  }, [result])
 
   function handleChange(field: keyof FormValues, value: string) {
     setValues((prev) => ({ ...prev, [field]: value }))
@@ -248,7 +255,9 @@ export function CalculatorForm() {
         <>
           <AdBanner slot="mid" />
 
+          <div ref={resultsRef} className="scroll-mt-4">
           <ResultsSummary result={result} />
+          </div>
 
           <Separator />
 
