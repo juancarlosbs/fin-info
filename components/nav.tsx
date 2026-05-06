@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils"
 
 const links = [
   { href: "/", label: "Juros Compostos" },
-  { href: "/imovel", label: "Comprar ou Alugar" },
 ]
 
 export function Nav() {
