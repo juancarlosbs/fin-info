@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator"
 import { AdBanner } from "@/components/ads/ad-banner"
 import { ScenarioCards } from "@/components/property/scenario-cards"
 import { ScenarioChart } from "@/components/property/scenario-chart"
+import { ScenarioTable } from "@/components/property/scenario-table"
 import { calculatePropertyScenarios } from "@/lib/property-calculator"
 
 interface FormValues {
@@ -211,6 +212,7 @@ export function PropertyForm() {
           <ScenarioCards scenarios={result.scenarios} />
           <Separator />
           <ScenarioChart breakdown={result.breakdown} totalMonths={result.totalMonths} />
+          <ScenarioTable breakdown={result.breakdown} />
         </>
       )}
     </div>
