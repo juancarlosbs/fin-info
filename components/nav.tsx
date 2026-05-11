@@ -8,6 +8,7 @@ const links = [
   { href: "/", label: "Juros Compostos" },
   { href: "/comparacao", label: "Consórcio vs Financiamento" },
   { href: "/consortium-financing-comparison", label: "Consórcio x Financiamento" },
+  { href: "/acoes", label: "Análise de Ações" },
 ]
 
 export function Nav() {
