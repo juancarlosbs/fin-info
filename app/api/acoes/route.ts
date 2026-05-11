@@ -13,28 +13,22 @@ export async function GET(request: NextRequest) {
   const tokenParam = token ? `&token=${token}` : ""
 
   try {
-    const [quoteRes, dividendsRes] = await Promise.all([
-      fetch(
-        `${BRAPI_BASE}/quote/${ticker}?modules=summaryProfile,defaultKeyStatistics,financialData${tokenParam}`,
-        { next: { revalidate: 300 } }
-      ),
-      fetch(
-        `${BRAPI_BASE}/quote/${ticker}/dividends?lastDividends=60${tokenParam}`,
-        { next: { revalidate: 3600 } }
-      ),
-    ])
+    // Dividends are fetched via dividends=true in the same quote request (not a separate endpoint)
+    const res = await fetch(
+      `${BRAPI_BASE}/quote/${ticker}?modules=summaryProfile,defaultKeyStatistics,financialData&dividends=true${tokenParam}`,
+      { next: { revalidate: 300 } }
+    )
 
-    if (!quoteRes.ok) {
+    if (!res.ok) {
       return NextResponse.json(
         { error: "Ticker não encontrado ou serviço indisponível" },
         { status: 404 }
       )
     }
 
-    const quoteData = await quoteRes.json()
-    const dividendsData = dividendsRes.ok ? await dividendsRes.json() : null
+    const data = await res.json()
+    const result = data?.results?.[0]
 
-    const result = quoteData?.results?.[0]
     if (!result) {
       return NextResponse.json(
         { error: "Dados não encontrados para o ticker informado" },
@@ -43,11 +37,13 @@ export async function GET(request: NextRequest) {
     }
 
     const summary = result.summaryProfile ?? {}
+    // earningsPerShare (LPA) lives inside defaultKeyStatistics, not at the root
     const keyStats = result.defaultKeyStatistics ?? {}
     const financial = result.financialData ?? {}
 
+    // Dividends are returned as result.dividendsData.cashDividends[]
     const rawDividends: Array<{ rate?: number; paymentDate?: string }> =
-      dividendsData?.results?.dividendsData?.cashDividends ?? []
+      result.dividendsData?.cashDividends ?? []
 
     const dividends = rawDividends
       .filter((d) => d.rate && d.rate > 0 && d.paymentDate)
@@ -57,10 +53,11 @@ export async function GET(request: NextRequest) {
       symbol: result.symbol,
       name: result.longName ?? result.shortName ?? ticker,
       price: result.regularMarketPrice,
-      eps: result.earningsPerShare ?? keyStats.trailingEps ?? null,
+      // LPA: earningsPerShare is in defaultKeyStatistics, not root
+      eps: keyStats.earningsPerShare ?? null,
       bookValue: keyStats.bookValue ?? null,
-      priceToBook: keyStats.priceToBook ?? result.priceToBook ?? null,
-      priceEarnings: result.priceEarnings ?? result.regularMarketPE ?? null,
+      priceToBook: keyStats.priceToBook ?? null,
+      priceEarnings: result.priceEarnings ?? null,
       returnOnEquity: financial.returnOnEquity ?? null,
       debtToEquity: financial.debtToEquity ?? null,
       profitMargins: financial.profitMargins ?? null,
