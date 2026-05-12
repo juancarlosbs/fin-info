@@ -350,7 +350,7 @@ export function calculateAveragePrice(
   return { price, methods }
 }
 
-// ─── Setor ────────────────────────────────────────────────────────────────────
+// ─── Setor (sectorKey — slug usado internamente) ──────────────────────────────
 
 const SECTOR_LABELS: Record<string, string> = {
   energy: "Energia",
@@ -378,6 +378,270 @@ export function getSectorLabel(sectorKey: string | null): string {
   if (!sectorKey) return "Setor não informado"
   return SECTOR_LABELS[sectorKey] ?? sectorKey
 }
+
+// ─── Classificação setorial BrAPI (campo "sector" em inglês) ─────────────────
+
+export interface SectorInfo {
+  ordem: number | null
+  nomePt: string
+  categoria: string
+  classificacao: string
+  nota: number | null
+  risco: string
+  cor: string
+  hex: string
+  comentario: string
+}
+
+export interface SectorClassificationResult extends SectorInfo {
+  sectorOriginal: string
+}
+
+const BRAPI_SECTOR_CLASSIFICATION: Record<string, SectorInfo> = {
+  "Finance": {
+    ordem: 1,
+    nomePt: "Financeiro",
+    categoria: "Setor prioritário",
+    classificacao: "Excelente",
+    nota: 100,
+    risco: "Médio",
+    cor: "azul",
+    hex: "#2563EB",
+    comentario: "Setor considerado um dos mais fortes para análise de longo prazo, especialmente por sua capacidade de gerar lucro, recorrência de receita, escala e rentabilidade. Inclui bancos, seguradoras e instituições financeiras. Ainda exige análise de inadimplência, ROE, eficiência operacional, lucro recorrente, governança e preço.",
+  },
+  "Utilities": {
+    ordem: 2,
+    nomePt: "Serviços públicos / utilities",
+    categoria: "Setor perene",
+    classificacao: "Excelente",
+    nota: 95,
+    risco: "Baixo",
+    cor: "azul",
+    hex: "#2563EB",
+    comentario: "Setor ligado a serviços essenciais, como energia elétrica, transmissão, distribuição e saneamento. Costuma ter demanda estável, maior previsibilidade de receita e boa resiliência em crises. Exige atenção a regulação, dívida, revisão tarifária, lucro e gestão.",
+  },
+  "Consumer Non-Durables": {
+    ordem: 3,
+    nomePt: "Consumo não durável",
+    categoria: "Setor perene",
+    classificacao: "Excelente",
+    nota: 90,
+    risco: "Baixo a médio",
+    cor: "azul",
+    hex: "#2563EB",
+    comentario: "Setor ligado a produtos de consumo recorrente, como alimentos, bebidas, higiene e itens essenciais. A demanda tende a se manter mesmo em cenários econômicos difíceis, tornando o setor mais defensivo.",
+  },
+  "Health Services": {
+    ordem: 4,
+    nomePt: "Serviços de saúde",
+    categoria: "Setor perene",
+    classificacao: "Muito viável",
+    nota: 86,
+    risco: "Médio",
+    cor: "verde",
+    hex: "#16A34A",
+    comentario: "Setor ligado a hospitais, laboratórios, planos de saúde e serviços médicos. A demanda por saúde tende a ser estrutural e recorrente, mas ainda exige atenção a margens, dívida, aquisições, regulação e eficiência operacional.",
+  },
+  "Health Technology": {
+    ordem: 5,
+    nomePt: "Tecnologia em saúde / farmacêuticas",
+    categoria: "Setor perene",
+    classificacao: "Muito viável",
+    nota: 82,
+    risco: "Médio",
+    cor: "verde",
+    hex: "#16A34A",
+    comentario: "Setor ligado a medicamentos, equipamentos e soluções de saúde. Possui demanda estrutural positiva, mas pode depender de inovação, escala, aprovação regulatória e margens.",
+  },
+  "Communications": {
+    ordem: 6,
+    nomePt: "Comunicações e telecom",
+    categoria: "Intermediário",
+    classificacao: "Viável",
+    nota: 76,
+    risco: "Médio",
+    cor: "verde",
+    hex: "#16A34A",
+    comentario: "Setor com receita relativamente recorrente, especialmente em telecom, mas com crescimento limitado, alta competição e necessidade constante de investimento.",
+  },
+  "Industrial Services": {
+    ordem: 7,
+    nomePt: "Serviços industriais e infraestrutura",
+    categoria: "Intermediário",
+    classificacao: "Viável",
+    nota: 72,
+    risco: "Médio",
+    cor: "verde",
+    hex: "#16A34A",
+    comentario: "Pode incluir infraestrutura, concessões, engenharia e serviços industriais. Alguns negócios possuem contratos longos e previsibilidade, mas ainda dependem de capex, dívida, execução e regulação.",
+  },
+  "Distribution Services": {
+    ordem: 8,
+    nomePt: "Distribuição e logística comercial",
+    categoria: "Intermediário",
+    classificacao: "Viável",
+    nota: 68,
+    risco: "Médio",
+    cor: "verde",
+    hex: "#16A34A",
+    comentario: "Setor ligado a distribuição, atacado e logística comercial. Pode ter escala e recorrência, mas depende de volume, capital de giro, margem operacional e atividade econômica.",
+  },
+  "Energy Minerals": {
+    ordem: 9,
+    nomePt: "Petróleo, gás e combustíveis",
+    categoria: "Cíclico",
+    classificacao: "Viável com cautela",
+    nota: 62,
+    risco: "Médio a alto",
+    cor: "amarelo",
+    hex: "#EAB308",
+    comentario: "Setor com grande geração de caixa em ciclos favoráveis, mas muito dependente de preço internacional do petróleo, câmbio, regulação e interferência política. Deve ser analisado com cautela.",
+  },
+  "Non-Energy Minerals": {
+    ordem: 10,
+    nomePt: "Mineração, metais e materiais básicos",
+    categoria: "Cíclico",
+    classificacao: "Requer atenção",
+    nota: 58,
+    risco: "Alto",
+    cor: "amarelo",
+    hex: "#EAB308",
+    comentario: "Setor de commodities minerais, como mineração, siderurgia e metais. Pode ser muito lucrativo em ciclos favoráveis, mas é altamente sensível à demanda global, câmbio e preço das commodities.",
+  },
+  "Process Industries": {
+    ordem: 11,
+    nomePt: "Indústrias de processo",
+    categoria: "Cíclico",
+    classificacao: "Requer atenção",
+    nota: 56,
+    risco: "Médio a alto",
+    cor: "amarelo",
+    hex: "#EAB308",
+    comentario: "Pode envolver papel e celulose, química, agroindústria e outros negócios industriais de transformação. Geralmente possui exposição a ciclo econômico, custos, câmbio, margens e commodities.",
+  },
+  "Producer Manufacturing": {
+    ordem: 12,
+    nomePt: "Manufatura industrial",
+    categoria: "Cíclico",
+    classificacao: "Requer atenção",
+    nota: 52,
+    risco: "Médio a alto",
+    cor: "amarelo",
+    hex: "#EAB308",
+    comentario: "Setor industrial sensível ao ciclo econômico, custos de produção, demanda, câmbio e capacidade operacional. Pode ter boas empresas, mas exige análise cuidadosa de margem, dívida, eficiência e geração de caixa.",
+  },
+  "Technology Services": {
+    ordem: 13,
+    nomePt: "Serviços de tecnologia",
+    categoria: "Intermediário",
+    classificacao: "Requer atenção",
+    nota: 50,
+    risco: "Médio a alto",
+    cor: "amarelo",
+    hex: "#EAB308",
+    comentario: "Setor com potencial de crescimento, mas muitas vezes depende de escala, inovação, margens futuras e valuation. Na bolsa brasileira há poucas empresas consolidadas.",
+  },
+  "Electronic Technology": {
+    ordem: 14,
+    nomePt: "Tecnologia eletrônica",
+    categoria: "Intermediário",
+    classificacao: "Requer atenção",
+    nota: 48,
+    risco: "Médio a alto",
+    cor: "amarelo",
+    hex: "#EAB308",
+    comentario: "Setor ligado a equipamentos, eletrônicos, hardware e tecnologia embarcada. Pode ter potencial, mas costuma depender de inovação, escala, fornecedores, câmbio e competição.",
+  },
+  "Commercial Services": {
+    ordem: 15,
+    nomePt: "Serviços comerciais",
+    categoria: "Pouco perene",
+    classificacao: "Requer atenção",
+    nota: 42,
+    risco: "Alto",
+    cor: "laranja",
+    hex: "#F97316",
+    comentario: "Setor amplo, podendo incluir educação, serviços terceirizados, consultorias e outros negócios. A qualidade varia bastante, mas muitos modelos dependem de ciclo econômico, margem, escala e recorrência.",
+  },
+  "Consumer Durables": {
+    ordem: 16,
+    nomePt: "Consumo durável",
+    categoria: "Pouco perene",
+    classificacao: "Arriscado",
+    nota: 35,
+    risco: "Alto",
+    cor: "vermelho",
+    hex: "#DC2626",
+    comentario: "Setor ligado a bens duráveis, como imóveis, veículos, eletrodomésticos e construção. É muito sensível a juros, crédito, renda da população e ciclo econômico.",
+  },
+  "Retail Trade": {
+    ordem: 17,
+    nomePt: "Varejo",
+    categoria: "Pouco perene",
+    classificacao: "Arriscado",
+    nota: 30,
+    risco: "Alto",
+    cor: "vermelho",
+    hex: "#DC2626",
+    comentario: "Setor com margens apertadas, alta concorrência e forte dependência de crédito, renda, consumo e juros. Exige análise rigorosa de dívida, caixa, margem, estoque e crescimento real.",
+  },
+  "Consumer Services": {
+    ordem: 18,
+    nomePt: "Serviços ao consumidor",
+    categoria: "Pouco perene",
+    classificacao: "Arriscado",
+    nota: 28,
+    risco: "Alto",
+    cor: "vermelho",
+    hex: "#DC2626",
+    comentario: "Setor normalmente ligado a serviços discricionários, lazer, turismo, educação ou consumo não essencial. Costuma depender de renda disponível, confiança do consumidor e ciclo econômico.",
+  },
+  "Transportation": {
+    ordem: 19,
+    nomePt: "Transporte",
+    categoria: "Pouco perene",
+    classificacao: "Alto risco",
+    nota: 25,
+    risco: "Muito alto",
+    cor: "vermelho",
+    hex: "#DC2626",
+    comentario: "Setor intensivo em capital, sensível a combustível, câmbio, demanda, dívida e ciclo econômico. Pode ter margens frágeis e alta volatilidade.",
+  },
+  "Miscellaneous": {
+    ordem: 20,
+    nomePt: "Diversos / não classificado claramente",
+    categoria: "Indefinido",
+    classificacao: "Não classificado",
+    nota: null,
+    risco: "Indefinido",
+    cor: "cinza",
+    hex: "#6B7280",
+    comentario: "A brapi retornou um setor genérico ou pouco específico. Não use o setor como critério forte de viabilidade. Analise os fundamentos da empresa individualmente.",
+  },
+}
+
+const BRAPI_SECTOR_TOTAL = Object.keys(BRAPI_SECTOR_CLASSIFICATION).length
+
+export function getClassificacaoSetorialBrapi(sector: string | null): SectorClassificationResult {
+  const fallback: SectorClassificationResult = {
+    sectorOriginal: sector ?? "",
+    ordem: null,
+    nomePt: "Setor não mapeado",
+    categoria: "Indefinido",
+    classificacao: "Não classificado",
+    nota: null,
+    risco: "Indefinido",
+    cor: "cinza",
+    hex: "#6B7280",
+    comentario: "Este setor ainda não possui uma classificação definida na aplicação. Analise os fundamentos da empresa individualmente.",
+  }
+  if (!sector) return fallback
+  const entry = BRAPI_SECTOR_CLASSIFICATION[sector]
+  if (!entry) return { ...fallback, sectorOriginal: sector }
+  return { ...entry, sectorOriginal: sector }
+}
+
+export { BRAPI_SECTOR_TOTAL }
 
 // ─── Viabilidade ──────────────────────────────────────────────────────────────
 

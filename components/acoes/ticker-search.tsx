@@ -14,6 +14,7 @@ import { LynchCard } from "@/components/acoes/lynch-card"
 import { BuffettCard } from "@/components/acoes/buffett-card"
 import { AveragePriceCard } from "@/components/acoes/average-price-card"
 import { ViabilityCard } from "@/components/acoes/viability-card"
+import { SectorCard } from "@/components/acoes/sector-card"
 import {
   type StockData,
   calculateGrahamPrice,
@@ -132,6 +133,8 @@ export function TickerSearch() {
           </div>
 
           <ViabilityCard result={viabilityResult} />
+
+          <SectorCard sector={data.sector} />
         </>
       )}
     </div>
