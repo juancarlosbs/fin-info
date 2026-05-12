@@ -3,6 +3,11 @@ export interface DividendEntry {
   rate: number
 }
 
+export interface EarningsEntry {
+  year: number
+  netIncome: number
+}
+
 export interface StockData {
   symbol: string
   name: string
@@ -24,6 +29,7 @@ export interface StockData {
   sector: string | null
   sectorKey: string | null
   dividends: DividendEntry[]
+  earningsHistory: EarningsEntry[]
 }
 
 export interface GrahamResult {
@@ -116,6 +122,17 @@ export function calculateGrahamPrice(eps: number | null, bookValue: number | nul
 }
 
 // ─── Bazin ────────────────────────────────────────────────────────────────────
+
+export function getConsistentEarningsLabel(history: EarningsEntry[]): { label: string; passed: boolean } {
+  if (history.length === 0) return { label: "Histórico não disponível", passed: false }
+  const positive = history.filter((e) => e.netIncome > 0).length
+  const total = history.length
+  const years = history.map((e) => e.year).sort((a, b) => a - b)
+  return {
+    label: `${positive}/${total} anos positivos (${years[0]}–${years[years.length - 1]})`,
+    passed: positive === total,
+  }
+}
 
 export function getAnnualDividend(dividends: DividendEntry[]): number {
   const oneYearAgo = new Date()
@@ -314,18 +331,12 @@ export function calculateLynchPrice(
 export function calculateAveragePrice(
   graham: GrahamResult,
   bazin: BazinResult,
-  ddm: DDMResult,
-  dcf: DCFResult,
-  lynch: LynchResult,
-  buffett: BuffettResult
+  ddm: DDMResult
 ): AveragePriceResult {
   const methods = [
     { label: "Graham", price: graham.isValid ? graham.price : null, isValid: graham.isValid },
     { label: "Bazin", price: bazin.isValid ? bazin.price : null, isValid: bazin.isValid },
     { label: "DDM", price: ddm.isValid ? ddm.price : null, isValid: ddm.isValid },
-    { label: "DCF", price: dcf.isValid ? dcf.price : null, isValid: dcf.isValid },
-    { label: "Lynch", price: lynch.isValid ? lynch.price : null, isValid: lynch.isValid },
-    { label: "Buffett", price: buffett.isValid ? buffett.price : null, isValid: buffett.isValid },
   ]
   const validPrices = methods.filter((m) => m.price !== null).map((m) => m.price as number)
   const price =
@@ -367,21 +378,27 @@ export function getSectorLabel(sectorKey: string | null): string {
 export function classifyViability(
   data: StockData,
   grahamResult: GrahamResult,
-  bazinResult: BazinResult,
-  buffettResult: BuffettResult
+  bazinResult: BazinResult
 ): ViabilityResult {
-  const { price, eps, priceEarnings, priceToBook, returnOnEquity, debtToEquity, profitMargins, dividendYield, dividends, sectorKey, freeCashflow, earningsGrowth } = data
+  const { price, eps, priceEarnings, priceToBook, returnOnEquity, debtToEquity, profitMargins, dividendYield, dividends, sectorKey, earningsHistory } = data
 
   const dividendYearsCount = getDividendYearsCount(dividends)
   const effectiveDY =
     dividendYield ??
     (bazinResult.annualDividend > 0 && price > 0 ? bazinResult.annualDividend / price : null)
+  const earningsConsistency = getConsistentEarningsLabel(earningsHistory)
 
   const criteria: CriteriaCheck[] = [
     {
       label: "Lucro positivo (LPA > 0)",
       value: eps !== null ? `LPA: R$ ${eps.toFixed(2)}` : "Não disponível",
       passed: eps !== null && eps > 0,
+      weight: 2,
+    },
+    {
+      label: "Lucros consistentes (histórico DRE)",
+      value: earningsConsistency.label,
+      passed: earningsConsistency.passed,
       weight: 2,
     },
     {
@@ -431,26 +448,6 @@ export function classifyViability(
       value: getSectorLabel(sectorKey),
       passed: sectorKey !== null && DEFENSIVE_SECTORS.has(sectorKey),
       weight: 0,
-    },
-    {
-      label: "FCL positivo — Owner Earnings (Buffett)",
-      value: freeCashflow !== null ? (freeCashflow > 0 ? "Positivo" : "Negativo") : "Não disponível",
-      passed: freeCashflow !== null && freeCashflow > 0,
-      weight: 1,
-    },
-    {
-      label: "Crescimento de lucros > 0% (Buffett)",
-      value: earningsGrowth !== null ? `${(earningsGrowth * 100).toFixed(1)}%` : "Não disponível",
-      passed: earningsGrowth !== null && earningsGrowth > 0,
-      weight: 1,
-    },
-    {
-      label: "Preço abaixo do valor intrínseco Buffett (MOS 30%)",
-      value: buffettResult.isValid && buffettResult.safetyPrice !== null
-        ? `Preço MOS: R$ ${buffettResult.safetyPrice.toFixed(2)}`
-        : "Não calculado",
-      passed: buffettResult.isValid && buffettResult.safetyPrice !== null && price < buffettResult.safetyPrice,
-      weight: 1,
     },
   ]
 

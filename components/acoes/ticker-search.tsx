@@ -19,9 +19,6 @@ import {
   calculateGrahamPrice,
   calculateBazinPrice,
   calculateDDMPrice,
-  calculateDCFPrice,
-  calculateLynchPrice,
-  calculateBuffettPrice,
   calculateAveragePrice,
   classifyViability,
 } from "@/lib/graham-bazin"
@@ -61,39 +58,24 @@ export function TickerSearch() {
   const grahamResult = data ? calculateGrahamPrice(data.eps, data.bookValue) : null
   const bazinResult = data ? calculateBazinPrice(data.dividends) : null
   const ddmResult = data ? calculateDDMPrice(data.dividends) : null
-  const dcfResult = data
-    ? calculateDCFPrice(
-        data.freeCashflow,
-        data.sharesOutstanding,
-        data.beta,
-        data.marketCap,
-        data.totalDebt,
-        data.earningsGrowth
-      )
-    : null
-  const lynchResult = data ? calculateLynchPrice(data.eps, data.earningsGrowth) : null
-  const buffettResult = data
-    ? calculateBuffettPrice(data.freeCashflow, data.sharesOutstanding, data.earningsGrowth)
-    : null
 
   const averageResult =
-    grahamResult && bazinResult && ddmResult && dcfResult && lynchResult && buffettResult
-      ? calculateAveragePrice(grahamResult, bazinResult, ddmResult, dcfResult, lynchResult, buffettResult)
+    grahamResult && bazinResult && ddmResult
+      ? calculateAveragePrice(grahamResult, bazinResult, ddmResult)
       : null
 
   const viabilityResult =
-    data && grahamResult && bazinResult && buffettResult
-      ? classifyViability(data, grahamResult, bazinResult, buffettResult)
+    data && grahamResult && bazinResult
+      ? classifyViability(data, grahamResult, bazinResult)
       : null
-
 
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Análise de Ações — 5 Métodos de Valuation</CardTitle>
+          <CardTitle>Análise de Ações — Valuation</CardTitle>
           <CardDescription>
-            Graham · Bazin · DDM · DCF (WACC) · Peter Lynch — preço médio justo e classificação de viabilidade.
+            Graham · Bazin · DDM — preço médio justo e classificação de viabilidade.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -117,7 +99,7 @@ export function TickerSearch() {
         </CardContent>
       </Card>
 
-      {data && grahamResult && bazinResult && ddmResult && dcfResult && lynchResult && buffettResult && averageResult && viabilityResult && (
+      {data && grahamResult && bazinResult && ddmResult && averageResult && viabilityResult && (
         <>
           <StockHeader data={data} />
 
@@ -127,9 +109,9 @@ export function TickerSearch() {
             <GrahamCard data={data} result={grahamResult} />
             <BazinCard data={data} result={bazinResult} />
             <DDMCard data={data} result={ddmResult} />
-            <DCFCard data={data} result={dcfResult} />
-            <LynchCard data={data} result={lynchResult} />
-            <BuffettCard data={data} result={buffettResult} />
+            <DCFCard />
+            <LynchCard />
+            <BuffettCard />
           </div>
 
           <ViabilityCard result={viabilityResult} />

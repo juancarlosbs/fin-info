@@ -15,23 +15,36 @@ export async function GET(request: NextRequest) {
   try {
     // Dividends are fetched via dividends=true in the same quote request (not a separate endpoint)
     const res = await fetch(
-      `${BRAPI_BASE}/quote/${ticker}?modules=summaryProfile,defaultKeyStatistics,financialData&dividends=true${tokenParam}`,
+      `${BRAPI_BASE}/quote/${ticker}?modules=summaryProfile,defaultKeyStatistics,incomeStatementHistory&dividends=true${tokenParam}`,
       { next: { revalidate: 300 } }
     )
 
     if (!res.ok) {
-      return NextResponse.json(
-        { error: "Ticker não encontrado ou serviço indisponível" },
-        { status: 404 }
-      )
+      let message = "Ticker não encontrado ou serviço indisponível"
+      if (res.status === 401 || res.status === 403) {
+        message =
+          "Acesso negado — este ticker requer um plano pago da BrAPI. " +
+          "No plano gratuito só estão disponíveis: PETR4, MGLU3, VALE3, ITUB4."
+      } else {
+        try {
+          const body = await res.json()
+          if (typeof body?.message === "string") message = body.message
+          else if (typeof body?.error === "string") message = body.error
+        } catch { /* ignore */ }
+      }
+      return NextResponse.json({ error: message }, { status: res.status })
     }
 
     const data = await res.json()
     const result = data?.results?.[0]
 
     if (!result) {
+      const token = process.env.BRAPI_TOKEN
+      const hint = !token
+        ? " Configure BRAPI_TOKEN para acessar outros tickers além dos 4 gratuitos."
+        : ""
       return NextResponse.json(
-        { error: "Dados não encontrados para o ticker informado" },
+        { error: `Ticker "${ticker}" não encontrado.${hint}` },
         { status: 404 }
       )
     }
@@ -48,6 +61,36 @@ export async function GET(request: NextRequest) {
     const dividends = rawDividends
       .filter((d) => d.rate && d.rate > 0 && d.paymentDate)
       .map((d) => ({ paymentDate: d.paymentDate as string, rate: d.rate as number }))
+
+    // incomeStatementHistory: annual net income per year (Startup+ plan)
+    // BrAPI may return nested Yahoo Finance format ({raw, fmt}) or flat numbers
+    type RawIncomeEntry = Record<string, unknown>
+    const rawIncome: RawIncomeEntry[] =
+      result.incomeStatementHistory?.incomeStatementHistory ?? []
+
+    const earningsHistory = rawIncome
+      .map((e) => {
+        const rawNI = e.netIncome
+        const netIncome =
+          typeof rawNI === "number"
+            ? rawNI
+            : typeof rawNI === "object" && rawNI !== null
+            ? ((rawNI as { raw?: number }).raw ?? null)
+            : null
+
+        const rawDate = e.endDate
+        const dateStr =
+          typeof rawDate === "string"
+            ? rawDate
+            : typeof rawDate === "object" && rawDate !== null
+            ? ((rawDate as { fmt?: string }).fmt ?? null)
+            : null
+
+        if (netIncome === null || dateStr === null) return null
+        return { year: new Date(dateStr).getFullYear(), netIncome }
+      })
+      .filter((e): e is { year: number; netIncome: number } => e !== null)
+      .sort((a, b) => a.year - b.year)
 
     return NextResponse.json({
       symbol: result.symbol,
@@ -71,6 +114,7 @@ export async function GET(request: NextRequest) {
       sector: summary.sector ?? null,
       sectorKey: summary.sectorKey ?? null,
       dividends,
+      earningsHistory,
     })
   } catch {
     return NextResponse.json({ error: "Erro ao buscar dados" }, { status: 500 })
