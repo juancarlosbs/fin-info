@@ -20,18 +20,31 @@ export async function GET(request: NextRequest) {
     )
 
     if (!res.ok) {
-      return NextResponse.json(
-        { error: "Ticker não encontrado ou serviço indisponível" },
-        { status: 404 }
-      )
+      let message = "Ticker não encontrado ou serviço indisponível"
+      if (res.status === 401 || res.status === 403) {
+        message =
+          "Acesso negado — este ticker requer um plano pago da BrAPI. " +
+          "No plano gratuito só estão disponíveis: PETR4, MGLU3, VALE3, ITUB4."
+      } else {
+        try {
+          const body = await res.json()
+          if (typeof body?.message === "string") message = body.message
+          else if (typeof body?.error === "string") message = body.error
+        } catch { /* ignore */ }
+      }
+      return NextResponse.json({ error: message }, { status: res.status })
     }
 
     const data = await res.json()
     const result = data?.results?.[0]
 
     if (!result) {
+      const token = process.env.BRAPI_TOKEN
+      const hint = !token
+        ? " Configure BRAPI_TOKEN para acessar outros tickers além dos 4 gratuitos."
+        : ""
       return NextResponse.json(
-        { error: "Dados não encontrados para o ticker informado" },
+        { error: `Ticker "${ticker}" não encontrado.${hint}` },
         { status: 404 }
       )
     }
