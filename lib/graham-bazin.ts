@@ -63,7 +63,8 @@ export interface LynchResult {
   price: number | null
   isValid: boolean
   reason: string | null
-  growthRate: number | null
+  growthRate: number | null      // valor usado no cálculo (cap 50%)
+  rawGrowthRate: number | null   // valor bruto retornado pela API
 }
 
 export interface BuffettResult {
@@ -289,20 +290,23 @@ export function calculateLynchPrice(
   eps: number | null,
   earningsGrowth: number | null
 ): LynchResult {
-  const growthRate = earningsGrowth !== null ? earningsGrowth : null
+  const rawGrowthRate = earningsGrowth !== null ? earningsGrowth : null
+  // Lynch aplica PEG a crescimentos sustentáveis (10–25%); acima de 50% é crescimento
+  // excepcional/cíclico que distorce o PEG — limitado para evitar valores sem sentido
+  const growthRate = rawGrowthRate !== null ? Math.min(rawGrowthRate, 0.50) : null
 
   if (eps === null) {
-    return { price: null, isValid: false, reason: "LPA não disponível", growthRate }
+    return { price: null, isValid: false, reason: "LPA não disponível", growthRate, rawGrowthRate }
   }
   if (eps <= 0) {
-    return { price: null, isValid: false, reason: "LPA negativo — Lynch não aplicável", growthRate }
+    return { price: null, isValid: false, reason: "LPA negativo — Lynch não aplicável", growthRate, rawGrowthRate }
   }
   if (growthRate === null || growthRate <= 0) {
-    return { price: null, isValid: false, reason: "Crescimento não disponível ou negativo", growthRate }
+    return { price: null, isValid: false, reason: "Crescimento não disponível ou negativo", growthRate, rawGrowthRate }
   }
 
   const growthPct = growthRate * 100 // Lynch usa o número percentual (ex: 15, não 0.15)
-  return { price: eps * growthPct, isValid: true, reason: null, growthRate }
+  return { price: eps * growthPct, isValid: true, reason: null, growthRate, rawGrowthRate }
 }
 
 // ─── Média dos métodos ────────────────────────────────────────────────────────
@@ -321,7 +325,7 @@ export function calculateAveragePrice(
     { label: "DDM", price: ddm.isValid ? ddm.price : null, isValid: ddm.isValid },
     { label: "DCF", price: dcf.isValid ? dcf.price : null, isValid: dcf.isValid },
     { label: "Lynch", price: lynch.isValid ? lynch.price : null, isValid: lynch.isValid },
-    { label: "Buffett", price: buffett.isValid ? buffett.safetyPrice : null, isValid: buffett.isValid },
+    { label: "Buffett", price: buffett.isValid ? buffett.price : null, isValid: buffett.isValid },
   ]
   const validPrices = methods.filter((m) => m.price !== null).map((m) => m.price as number)
   const price =
@@ -363,9 +367,10 @@ export function getSectorLabel(sectorKey: string | null): string {
 export function classifyViability(
   data: StockData,
   grahamResult: GrahamResult,
-  bazinResult: BazinResult
+  bazinResult: BazinResult,
+  buffettResult: BuffettResult
 ): ViabilityResult {
-  const { price, eps, priceEarnings, priceToBook, returnOnEquity, debtToEquity, profitMargins, dividendYield, dividends, sectorKey } = data
+  const { price, eps, priceEarnings, priceToBook, returnOnEquity, debtToEquity, profitMargins, dividendYield, dividends, sectorKey, freeCashflow, earningsGrowth } = data
 
   const dividendYearsCount = getDividendYearsCount(dividends)
   const effectiveDY =
@@ -426,6 +431,26 @@ export function classifyViability(
       value: getSectorLabel(sectorKey),
       passed: sectorKey !== null && DEFENSIVE_SECTORS.has(sectorKey),
       weight: 0,
+    },
+    {
+      label: "FCL positivo — Owner Earnings (Buffett)",
+      value: freeCashflow !== null ? (freeCashflow > 0 ? "Positivo" : "Negativo") : "Não disponível",
+      passed: freeCashflow !== null && freeCashflow > 0,
+      weight: 1,
+    },
+    {
+      label: "Crescimento de lucros > 0% (Buffett)",
+      value: earningsGrowth !== null ? `${(earningsGrowth * 100).toFixed(1)}%` : "Não disponível",
+      passed: earningsGrowth !== null && earningsGrowth > 0,
+      weight: 1,
+    },
+    {
+      label: "Preço abaixo do valor intrínseco Buffett (MOS 30%)",
+      value: buffettResult.isValid && buffettResult.safetyPrice !== null
+        ? `Preço MOS: R$ ${buffettResult.safetyPrice.toFixed(2)}`
+        : "Não calculado",
+      passed: buffettResult.isValid && buffettResult.safetyPrice !== null && price < buffettResult.safetyPrice,
+      weight: 1,
     },
   ]
 

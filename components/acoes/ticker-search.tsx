@@ -82,8 +82,8 @@ export function TickerSearch() {
       : null
 
   const viabilityResult =
-    data && grahamResult && bazinResult
-      ? classifyViability(data, grahamResult, bazinResult)
+    data && grahamResult && bazinResult && buffettResult
+      ? classifyViability(data, grahamResult, bazinResult, buffettResult)
       : null
 
 
