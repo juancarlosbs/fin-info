@@ -52,6 +52,12 @@ export function LynchCard({ data, result }: LynchCardProps) {
                 <p className="text-muted-foreground text-xs">Crescimento dos lucros</p>
                 <p className="font-medium">
                   {result.growthRate !== null ? `${(result.growthRate * 100).toFixed(1)}%` : "—"}
+                  {result.rawGrowthRate !== null && result.growthRate !== null &&
+                    result.rawGrowthRate > result.growthRate && (
+                    <span className="text-xs text-muted-foreground font-normal ml-1">
+                      (API: {(result.rawGrowthRate * 100).toFixed(0)}% → limitado a 50%)
+                    </span>
+                  )}
                 </p>
               </div>
               <div>

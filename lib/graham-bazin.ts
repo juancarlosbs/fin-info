@@ -63,7 +63,8 @@ export interface LynchResult {
   price: number | null
   isValid: boolean
   reason: string | null
-  growthRate: number | null
+  growthRate: number | null      // valor usado no cálculo (cap 50%)
+  rawGrowthRate: number | null   // valor bruto retornado pela API
 }
 
 export interface BuffettResult {
@@ -289,20 +290,23 @@ export function calculateLynchPrice(
   eps: number | null,
   earningsGrowth: number | null
 ): LynchResult {
-  const growthRate = earningsGrowth !== null ? earningsGrowth : null
+  const rawGrowthRate = earningsGrowth !== null ? earningsGrowth : null
+  // Lynch aplica PEG a crescimentos sustentáveis (10–25%); acima de 50% é crescimento
+  // excepcional/cíclico que distorce o PEG — limitado para evitar valores sem sentido
+  const growthRate = rawGrowthRate !== null ? Math.min(rawGrowthRate, 0.50) : null
 
   if (eps === null) {
-    return { price: null, isValid: false, reason: "LPA não disponível", growthRate }
+    return { price: null, isValid: false, reason: "LPA não disponível", growthRate, rawGrowthRate }
   }
   if (eps <= 0) {
-    return { price: null, isValid: false, reason: "LPA negativo — Lynch não aplicável", growthRate }
+    return { price: null, isValid: false, reason: "LPA negativo — Lynch não aplicável", growthRate, rawGrowthRate }
   }
   if (growthRate === null || growthRate <= 0) {
-    return { price: null, isValid: false, reason: "Crescimento não disponível ou negativo", growthRate }
+    return { price: null, isValid: false, reason: "Crescimento não disponível ou negativo", growthRate, rawGrowthRate }
   }
 
   const growthPct = growthRate * 100 // Lynch usa o número percentual (ex: 15, não 0.15)
-  return { price: eps * growthPct, isValid: true, reason: null, growthRate }
+  return { price: eps * growthPct, isValid: true, reason: null, growthRate, rawGrowthRate }
 }
 
 // ─── Média dos métodos ────────────────────────────────────────────────────────
