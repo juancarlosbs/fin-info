@@ -11,6 +11,7 @@ import { BazinCard } from "@/components/acoes/bazin-card"
 import { DDMCard } from "@/components/acoes/ddm-card"
 import { DCFCard } from "@/components/acoes/dcf-card"
 import { LynchCard } from "@/components/acoes/lynch-card"
+import { BuffettCard } from "@/components/acoes/buffett-card"
 import { AveragePriceCard } from "@/components/acoes/average-price-card"
 import { ViabilityCard } from "@/components/acoes/viability-card"
 import {
@@ -20,6 +21,7 @@ import {
   calculateDDMPrice,
   calculateDCFPrice,
   calculateLynchPrice,
+  calculateBuffettPrice,
   calculateAveragePrice,
   classifyViability,
 } from "@/lib/graham-bazin"
@@ -70,16 +72,20 @@ export function TickerSearch() {
       )
     : null
   const lynchResult = data ? calculateLynchPrice(data.eps, data.earningsGrowth) : null
+  const buffettResult = data
+    ? calculateBuffettPrice(data.freeCashflow, data.sharesOutstanding, data.earningsGrowth)
+    : null
 
   const averageResult =
-    grahamResult && bazinResult && ddmResult && dcfResult && lynchResult
-      ? calculateAveragePrice(grahamResult, bazinResult, ddmResult, dcfResult, lynchResult)
+    grahamResult && bazinResult && ddmResult && dcfResult && lynchResult && buffettResult
+      ? calculateAveragePrice(grahamResult, bazinResult, ddmResult, dcfResult, lynchResult, buffettResult)
       : null
 
   const viabilityResult =
     data && grahamResult && bazinResult
       ? classifyViability(data, grahamResult, bazinResult)
       : null
+
 
   return (
     <div className="space-y-6">
@@ -111,7 +117,7 @@ export function TickerSearch() {
         </CardContent>
       </Card>
 
-      {data && grahamResult && bazinResult && ddmResult && dcfResult && lynchResult && averageResult && viabilityResult && (
+      {data && grahamResult && bazinResult && ddmResult && dcfResult && lynchResult && buffettResult && averageResult && viabilityResult && (
         <>
           <StockHeader data={data} />
 
@@ -123,6 +129,7 @@ export function TickerSearch() {
             <DDMCard data={data} result={ddmResult} />
             <DCFCard data={data} result={dcfResult} />
             <LynchCard data={data} result={lynchResult} />
+            <BuffettCard data={data} result={buffettResult} />
           </div>
 
           <ViabilityCard result={viabilityResult} />

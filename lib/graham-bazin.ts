@@ -66,6 +66,18 @@ export interface LynchResult {
   growthRate: number | null
 }
 
+export interface BuffettResult {
+  price: number | null        // valor intrínseco
+  safetyPrice: number | null  // com margem de segurança de 30%
+  isValid: boolean
+  reason: string | null
+  discountRate: number
+  growthRate: number
+  terminalGrowth: number
+  years: number
+  oePerShare: number | null
+}
+
 export interface AveragePriceResult {
   price: number | null
   methods: { label: string; price: number | null; isValid: boolean }[]
@@ -219,6 +231,56 @@ export function calculateDCFPrice(
   return { ...base, fcfPerShare, price: pv1 + pvTerminal, isValid: true, reason: null }
 }
 
+// ─── Warren Buffett — Owner Earnings (Valor Intrínseco) ──────────────────────
+// P = Σ OE/ação × (1+g)^t / (1+r)^t  +  TV / (1+r)^N
+// TV = OE/ação × (1+g)^N × (1+g_t) / (r - g_t)
+//
+// Diferenças do DCF clássico:
+//  - r = 10% (taxa livre de risco; Buffett não adiciona prêmio de risco)
+//  - g cap = 15% (crescimento conservador — evita hipergrowth)
+//  - N = 10 anos (perspectiva de longo prazo)
+//  - Margem de Segurança de 30%: preço de compra = Intrínseco × 0,70
+
+export function calculateBuffettPrice(
+  freeCashflow: number | null,
+  sharesOutstanding: number | null,
+  earningsGrowth: number | null,
+  discountRate = 0.10,
+  terminalGrowth = 0.03,
+  marginOfSafety = 0.30,
+  years = 10
+): BuffettResult {
+  const growthRate =
+    earningsGrowth !== null ? Math.min(Math.max(earningsGrowth, 0), 0.15) : 0.05
+  const base = { discountRate, growthRate, terminalGrowth, years, oePerShare: null as number | null }
+
+  if (freeCashflow === null || sharesOutstanding === null || sharesOutstanding <= 0) {
+    return { ...base, price: null, safetyPrice: null, isValid: false, reason: "Owner Earnings ou ações em circulação não disponíveis" }
+  }
+  if (freeCashflow <= 0) {
+    return { ...base, price: null, safetyPrice: null, isValid: false, reason: "Owner Earnings negativo — método não aplicável" }
+  }
+  if (discountRate <= terminalGrowth) {
+    return { ...base, price: null, safetyPrice: null, isValid: false, reason: "Taxa de desconto deve ser maior que crescimento terminal" }
+  }
+
+  const oePerShare = freeCashflow / sharesOutstanding
+
+  let pv1 = 0
+  for (let t = 1; t <= years; t++) {
+    pv1 += (oePerShare * Math.pow(1 + growthRate, t)) / Math.pow(1 + discountRate, t)
+  }
+
+  const oeN = oePerShare * Math.pow(1 + growthRate, years)
+  const terminalValue = (oeN * (1 + terminalGrowth)) / (discountRate - terminalGrowth)
+  const pvTerminal = terminalValue / Math.pow(1 + discountRate, years)
+
+  const intrinsic = pv1 + pvTerminal
+  const safetyPrice = intrinsic * (1 - marginOfSafety)
+
+  return { ...base, oePerShare, price: intrinsic, safetyPrice, isValid: true, reason: null }
+}
+
 // ─── Peter Lynch — Preço PEG ──────────────────────────────────────────────────
 // Ação está justa quando PEG = 1  →  P/L = g(%)  →  P = LPA × g(%)
 // Lynch considera crescimento sustentável entre 10% e 25%
@@ -250,7 +312,8 @@ export function calculateAveragePrice(
   bazin: BazinResult,
   ddm: DDMResult,
   dcf: DCFResult,
-  lynch: LynchResult
+  lynch: LynchResult,
+  buffett: BuffettResult
 ): AveragePriceResult {
   const methods = [
     { label: "Graham", price: graham.isValid ? graham.price : null, isValid: graham.isValid },
@@ -258,6 +321,7 @@ export function calculateAveragePrice(
     { label: "DDM", price: ddm.isValid ? ddm.price : null, isValid: ddm.isValid },
     { label: "DCF", price: dcf.isValid ? dcf.price : null, isValid: dcf.isValid },
     { label: "Lynch", price: lynch.isValid ? lynch.price : null, isValid: lynch.isValid },
+    { label: "Buffett", price: buffett.isValid ? buffett.safetyPrice : null, isValid: buffett.isValid },
   ]
   const validPrices = methods.filter((m) => m.price !== null).map((m) => m.price as number)
   const price =
