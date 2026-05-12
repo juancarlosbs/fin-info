@@ -3,11 +3,6 @@ export interface DividendEntry {
   rate: number
 }
 
-export interface EarningsEntry {
-  year: number
-  netIncome: number
-}
-
 export interface StockData {
   symbol: string
   name: string
@@ -29,7 +24,6 @@ export interface StockData {
   sector: string | null
   sectorKey: string | null
   dividends: DividendEntry[]
-  earningsHistory: EarningsEntry[]
 }
 
 export interface GrahamResult {
@@ -122,17 +116,6 @@ export function calculateGrahamPrice(eps: number | null, bookValue: number | nul
 }
 
 // ─── Bazin ────────────────────────────────────────────────────────────────────
-
-export function getConsistentEarningsLabel(history: EarningsEntry[]): { label: string; passed: boolean } {
-  if (history.length === 0) return { label: "Histórico não disponível", passed: false }
-  const positive = history.filter((e) => e.netIncome > 0).length
-  const total = history.length
-  const years = history.map((e) => e.year).sort((a, b) => a - b)
-  return {
-    label: `${positive}/${total} anos positivos (${years[0]}–${years[years.length - 1]})`,
-    passed: positive === total,
-  }
-}
 
 export function getAnnualDividend(dividends: DividendEntry[]): number {
   const oneYearAgo = new Date()
@@ -380,25 +363,18 @@ export function classifyViability(
   grahamResult: GrahamResult,
   bazinResult: BazinResult
 ): ViabilityResult {
-  const { price, eps, priceEarnings, priceToBook, returnOnEquity, debtToEquity, profitMargins, dividendYield, dividends, sectorKey, earningsHistory } = data
+  const { price, eps, priceEarnings, priceToBook, returnOnEquity, debtToEquity, profitMargins, dividendYield, dividends, sectorKey } = data
 
   const dividendYearsCount = getDividendYearsCount(dividends)
   const effectiveDY =
     dividendYield ??
     (bazinResult.annualDividend > 0 && price > 0 ? bazinResult.annualDividend / price : null)
-  const earningsConsistency = getConsistentEarningsLabel(earningsHistory)
 
   const criteria: CriteriaCheck[] = [
     {
       label: "Lucro positivo (LPA > 0)",
       value: eps !== null ? `LPA: R$ ${eps.toFixed(2)}` : "Não disponível",
       passed: eps !== null && eps > 0,
-      weight: 2,
-    },
-    {
-      label: "Lucros consistentes (histórico DRE)",
-      value: earningsConsistency.label,
-      passed: earningsConsistency.passed,
       weight: 2,
     },
     {
