@@ -62,6 +62,7 @@ export async function GET(request: NextRequest) {
       debtToEquity: financial.debtToEquity ?? null,
       profitMargins: financial.profitMargins ?? null,
       dividendYield: financial.dividendYield ?? result.dividendYield ?? null,
+      earningsGrowth: financial.earningsGrowth ?? null,
       sector: summary.sector ?? null,
       sectorKey: summary.sectorKey ?? null,
       dividends,

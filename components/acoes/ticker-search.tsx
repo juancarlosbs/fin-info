@@ -8,11 +8,17 @@ import { Label } from "@/components/ui/label"
 import { StockHeader } from "@/components/acoes/stock-header"
 import { GrahamCard } from "@/components/acoes/graham-card"
 import { BazinCard } from "@/components/acoes/bazin-card"
+import { DDMCard } from "@/components/acoes/ddm-card"
+import { DCFCard } from "@/components/acoes/dcf-card"
+import { AveragePriceCard } from "@/components/acoes/average-price-card"
 import { ViabilityCard } from "@/components/acoes/viability-card"
 import {
   type StockData,
   calculateGrahamPrice,
   calculateBazinPrice,
+  calculateDDMPrice,
+  calculateDCFPrice,
+  calculateAveragePrice,
   classifyViability,
 } from "@/lib/graham-bazin"
 
@@ -50,6 +56,12 @@ export function TickerSearch() {
 
   const grahamResult = data ? calculateGrahamPrice(data.eps, data.bookValue) : null
   const bazinResult = data ? calculateBazinPrice(data.dividends) : null
+  const ddmResult = data ? calculateDDMPrice(data.dividends) : null
+  const dcfResult = data ? calculateDCFPrice(data.eps, data.earningsGrowth) : null
+  const averageResult =
+    grahamResult && bazinResult && ddmResult && dcfResult
+      ? calculateAveragePrice(grahamResult, bazinResult, ddmResult, dcfResult)
+      : null
   const viabilityResult =
     data && grahamResult && bazinResult
       ? classifyViability(data, grahamResult, bazinResult)
@@ -59,9 +71,9 @@ export function TickerSearch() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Análise de Ações — Graham &amp; Bazin</CardTitle>
+          <CardTitle>Análise de Ações — Graham, Bazin, DDM &amp; DCF</CardTitle>
           <CardDescription>
-            Calcule o preço justo de uma ação da B3 e veja a classificação de viabilidade com base em fundamentos.
+            Calcule o preço justo de uma ação da B3 por 4 métodos e veja o preço médio e a classificação de viabilidade.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -81,19 +93,25 @@ export function TickerSearch() {
               {loading ? "Buscando…" : "Analisar"}
             </Button>
           </form>
-          {error && (
-            <p className="mt-3 text-sm text-destructive">{error}</p>
-          )}
+          {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
         </CardContent>
       </Card>
 
-      {data && grahamResult && bazinResult && viabilityResult && (
+      {data && grahamResult && bazinResult && ddmResult && dcfResult && averageResult && viabilityResult && (
         <>
           <StockHeader data={data} />
+
+          {/* Preço médio em destaque */}
+          <AveragePriceCard currentPrice={data.price} result={averageResult} />
+
+          {/* 4 métodos em grid 2x2 */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <GrahamCard data={data} result={grahamResult} />
             <BazinCard data={data} result={bazinResult} />
+            <DDMCard data={data} result={ddmResult} />
+            <DCFCard data={data} result={dcfResult} />
           </div>
+
           <ViabilityCard result={viabilityResult} />
         </>
       )}
