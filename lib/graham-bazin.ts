@@ -321,7 +321,7 @@ export function calculateAveragePrice(
     { label: "DDM", price: ddm.isValid ? ddm.price : null, isValid: ddm.isValid },
     { label: "DCF", price: dcf.isValid ? dcf.price : null, isValid: dcf.isValid },
     { label: "Lynch", price: lynch.isValid ? lynch.price : null, isValid: lynch.isValid },
-    { label: "Buffett", price: buffett.isValid ? buffett.safetyPrice : null, isValid: buffett.isValid },
+    { label: "Buffett", price: buffett.isValid ? buffett.price : null, isValid: buffett.isValid },
   ]
   const validPrices = methods.filter((m) => m.price !== null).map((m) => m.price as number)
   const price =
@@ -363,9 +363,10 @@ export function getSectorLabel(sectorKey: string | null): string {
 export function classifyViability(
   data: StockData,
   grahamResult: GrahamResult,
-  bazinResult: BazinResult
+  bazinResult: BazinResult,
+  buffettResult: BuffettResult
 ): ViabilityResult {
-  const { price, eps, priceEarnings, priceToBook, returnOnEquity, debtToEquity, profitMargins, dividendYield, dividends, sectorKey } = data
+  const { price, eps, priceEarnings, priceToBook, returnOnEquity, debtToEquity, profitMargins, dividendYield, dividends, sectorKey, freeCashflow, earningsGrowth } = data
 
   const dividendYearsCount = getDividendYearsCount(dividends)
   const effectiveDY =
@@ -426,6 +427,26 @@ export function classifyViability(
       value: getSectorLabel(sectorKey),
       passed: sectorKey !== null && DEFENSIVE_SECTORS.has(sectorKey),
       weight: 0,
+    },
+    {
+      label: "FCL positivo — Owner Earnings (Buffett)",
+      value: freeCashflow !== null ? (freeCashflow > 0 ? "Positivo" : "Negativo") : "Não disponível",
+      passed: freeCashflow !== null && freeCashflow > 0,
+      weight: 1,
+    },
+    {
+      label: "Crescimento de lucros > 0% (Buffett)",
+      value: earningsGrowth !== null ? `${(earningsGrowth * 100).toFixed(1)}%` : "Não disponível",
+      passed: earningsGrowth !== null && earningsGrowth > 0,
+      weight: 1,
+    },
+    {
+      label: "Preço abaixo do valor intrínseco Buffett (MOS 30%)",
+      value: buffettResult.isValid && buffettResult.safetyPrice !== null
+        ? `Preço MOS: R$ ${buffettResult.safetyPrice.toFixed(2)}`
+        : "Não calculado",
+      passed: buffettResult.isValid && buffettResult.safetyPrice !== null && price < buffettResult.safetyPrice,
+      weight: 1,
     },
   ]
 
