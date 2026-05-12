@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   try {
     // Dividends are fetched via dividends=true in the same quote request (not a separate endpoint)
     const res = await fetch(
-      `${BRAPI_BASE}/quote/${ticker}?modules=summaryProfile,defaultKeyStatistics,financialData,incomeStatementHistory&dividends=true${tokenParam}`,
+      `${BRAPI_BASE}/quote/${ticker}?modules=summaryProfile,defaultKeyStatistics,incomeStatementHistory&dividends=true${tokenParam}`,
       { next: { revalidate: 300 } }
     )
 
