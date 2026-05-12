@@ -16,8 +16,16 @@ export interface StockData {
   bookValue: number | null
   priceToBook: number | null
   priceEarnings: number | null
+  returnOnEquity: number | null
+  debtToEquity: number | null
+  profitMargins: number | null
   dividendYield: number | null
+  earningsGrowth: number | null
+  freeCashflow: number | null
   sharesOutstanding: number | null
+  beta: number | null
+  totalDebt: number | null
+  marketCap: number | null
   sector: string | null
   sectorKey: string | null
   dividends: DividendEntry[]
@@ -323,12 +331,18 @@ export function calculateLynchPrice(
 export function calculateAveragePrice(
   graham: GrahamResult,
   bazin: BazinResult,
-  ddm: DDMResult
+  ddm: DDMResult,
+  dcf: DCFResult,
+  lynch: LynchResult,
+  buffett: BuffettResult
 ): AveragePriceResult {
   const methods = [
     { label: "Graham", price: graham.isValid ? graham.price : null, isValid: graham.isValid },
     { label: "Bazin", price: bazin.isValid ? bazin.price : null, isValid: bazin.isValid },
     { label: "DDM", price: ddm.isValid ? ddm.price : null, isValid: ddm.isValid },
+    { label: "DCF", price: dcf.isValid ? dcf.price : null, isValid: dcf.isValid },
+    { label: "Lynch", price: lynch.isValid ? lynch.price : null, isValid: lynch.isValid },
+    { label: "Buffett", price: buffett.isValid ? buffett.price : null, isValid: buffett.isValid },
   ]
   const validPrices = methods.filter((m) => m.price !== null).map((m) => m.price as number)
   const price =
@@ -370,9 +384,10 @@ export function getSectorLabel(sectorKey: string | null): string {
 export function classifyViability(
   data: StockData,
   grahamResult: GrahamResult,
-  bazinResult: BazinResult
+  bazinResult: BazinResult,
+  buffettResult: BuffettResult
 ): ViabilityResult {
-  const { price, eps, priceEarnings, priceToBook, dividendYield, dividends, sectorKey, earningsHistory } = data
+  const { price, eps, priceEarnings, priceToBook, returnOnEquity, debtToEquity, profitMargins, dividendYield, dividends, sectorKey, freeCashflow, earningsGrowth, earningsHistory } = data
 
   const dividendYearsCount = getDividendYearsCount(dividends)
   const effectiveDY =
@@ -388,10 +403,16 @@ export function classifyViability(
       weight: 2,
     },
     {
-      label: "Lucros consistentes (histórico)",
+      label: "Lucros consistentes (histórico DRE)",
       value: earningsConsistency.label,
       passed: earningsConsistency.passed,
       weight: 2,
+    },
+    {
+      label: "ROE ≥ 10%",
+      value: returnOnEquity !== null ? `${(returnOnEquity * 100).toFixed(1)}%` : "Não disponível",
+      passed: returnOnEquity !== null && returnOnEquity >= 0.1,
+      weight: 1,
     },
     {
       label: "P/L ≤ 15 (Graham)",
@@ -415,6 +436,38 @@ export function classifyViability(
       label: "Dividendos consistentes (≥ 5/5 anos)",
       value: `${dividendYearsCount}/5 anos com pagamento`,
       passed: dividendYearsCount >= 5,
+      weight: 1,
+    },
+    {
+      label: "Endividamento baixo (Dív/PL ≤ 100%)",
+      value: debtToEquity !== null ? `${debtToEquity.toFixed(0)}%` : "Não disponível",
+      passed: debtToEquity !== null && debtToEquity <= 100,
+      weight: 1,
+    },
+    {
+      label: "Margem líquida positiva",
+      value: profitMargins !== null ? `${(profitMargins * 100).toFixed(1)}%` : "Não disponível",
+      passed: profitMargins !== null && profitMargins > 0,
+      weight: 1,
+    },
+    {
+      label: "FCL positivo — Owner Earnings (Buffett)",
+      value: freeCashflow !== null ? (freeCashflow > 0 ? "Positivo" : "Negativo") : "Não disponível",
+      passed: freeCashflow !== null && freeCashflow > 0,
+      weight: 1,
+    },
+    {
+      label: "Crescimento de lucros > 0% (Buffett)",
+      value: earningsGrowth !== null ? `${(earningsGrowth * 100).toFixed(1)}%` : "Não disponível",
+      passed: earningsGrowth !== null && earningsGrowth > 0,
+      weight: 1,
+    },
+    {
+      label: "Preço abaixo do valor intrínseco Buffett (MOS 30%)",
+      value: buffettResult.isValid && buffettResult.safetyPrice !== null
+        ? `Preço MOS: R$ ${buffettResult.safetyPrice.toFixed(2)}`
+        : "Não calculado",
+      passed: buffettResult.isValid && buffettResult.safetyPrice !== null && price < buffettResult.safetyPrice,
       weight: 1,
     },
     {

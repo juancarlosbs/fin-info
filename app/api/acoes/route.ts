@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   try {
     // Dividends are fetched via dividends=true in the same quote request (not a separate endpoint)
     const res = await fetch(
-      `${BRAPI_BASE}/quote/${ticker}?modules=summaryProfile,defaultKeyStatistics,incomeStatementHistory&dividends=true${tokenParam}`,
+      `${BRAPI_BASE}/quote/${ticker}?modules=summaryProfile,defaultKeyStatistics,financialData,incomeStatementHistory&dividends=true${tokenParam}`,
       { next: { revalidate: 300 } }
     )
 
@@ -52,6 +52,7 @@ export async function GET(request: NextRequest) {
     const summary = result.summaryProfile ?? {}
     // earningsPerShare (LPA) lives inside defaultKeyStatistics, not at the root
     const keyStats = result.defaultKeyStatistics ?? {}
+    const financial = result.financialData ?? {}
 
     // Dividends are returned as result.dividendsData.cashDividends[]
     const rawDividends: Array<{ rate?: number; paymentDate?: string }> =
@@ -97,8 +98,16 @@ export async function GET(request: NextRequest) {
       bookValue: keyStats.bookValue ?? null,
       priceToBook: keyStats.priceToBook ?? null,
       priceEarnings: result.priceEarnings ?? null,
-      dividendYield: result.dividendYield ?? null,
+      returnOnEquity: financial.returnOnEquity ?? null,
+      debtToEquity: financial.debtToEquity ?? null,
+      profitMargins: financial.profitMargins ?? null,
+      dividendYield: financial.dividendYield ?? result.dividendYield ?? null,
+      earningsGrowth: financial.earningsGrowth ?? null,
+      freeCashflow: financial.freeCashflow ?? null,
       sharesOutstanding: keyStats.sharesOutstanding ?? keyStats.impliedSharesOutstanding ?? null,
+      beta: keyStats.beta ?? null,
+      totalDebt: financial.totalDebt ?? null,
+      marketCap: result.marketCap ?? null,
       sector: summary.sector ?? null,
       sectorKey: summary.sectorKey ?? null,
       dividends,
