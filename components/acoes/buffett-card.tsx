@@ -1,10 +1,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { type StockData, type DCFResult, formatBRL } from "@/lib/graham-bazin"
+import { type StockData, type BuffettResult, formatBRL } from "@/lib/graham-bazin"
 
-interface DCFCardProps {
+interface BuffettCardProps {
   data: StockData
-  result: DCFResult
+  result: BuffettResult
 }
 
 function upside(current: number, target: number): string {
@@ -12,14 +12,14 @@ function upside(current: number, target: number): string {
   return `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`
 }
 
-export function DCFCard({ data, result }: DCFCardProps) {
-  const isUndervalued = result.price !== null && data.price < result.price
+export function BuffettCard({ data, result }: BuffettCardProps) {
+  const isUndervalued = result.safetyPrice !== null && data.price < result.safetyPrice
 
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <CardTitle className="text-base">DCF — Fluxo de Caixa Descontado</CardTitle>
+          <CardTitle className="text-base">Warren Buffett — Owner Earnings</CardTitle>
           {result.isValid && (
             <Badge variant={isUndervalued ? "default" : "secondary"}>
               {isUndervalued ? "Abaixo do valor justo" : "Acima do valor justo"}
@@ -27,42 +27,42 @@ export function DCFCard({ data, result }: DCFCardProps) {
           )}
         </div>
         <p className="text-xs text-muted-foreground font-mono">
-          Σ FCL/(1+WACC)ⁿ + Valor Terminal · {result.years} anos
+          Σ OE/ação/(1+r)ⁿ + Valor Terminal · {result.years} anos · MOS 30%
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
-        {result.isValid && result.price !== null ? (
+        {result.isValid && result.price !== null && result.safetyPrice !== null ? (
           <>
             <div className="flex items-end justify-between">
               <div>
-                <p className="text-xs text-muted-foreground">Preço Justo (DCF)</p>
-                <p className="text-3xl font-bold text-foreground">{formatBRL(result.price)}</p>
+                <p className="text-xs text-muted-foreground">Preço com Margem de Segurança (30%)</p>
+                <p className="text-3xl font-bold text-foreground">{formatBRL(result.safetyPrice)}</p>
               </div>
               <div className="text-right">
                 <p className="text-xs text-muted-foreground">Potencial</p>
                 <p className={`text-lg font-semibold ${isUndervalued ? "text-green-600" : "text-red-500"}`}>
-                  {upside(data.price, result.price)}
+                  {upside(data.price, result.safetyPrice)}
                 </p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3 text-sm border-t pt-4">
               <div>
-                <p className="text-muted-foreground text-xs">FCL/ação</p>
+                <p className="text-muted-foreground text-xs">Valor Intrínseco</p>
+                <p className="font-medium">{formatBRL(result.price)}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">OE/ação</p>
                 <p className="font-medium">
-                  {result.fcfPerShare !== null ? formatBRL(result.fcfPerShare) : "—"}
+                  {result.oePerShare !== null ? formatBRL(result.oePerShare) : "—"}
                 </p>
               </div>
               <div>
-                <p className="text-muted-foreground text-xs">WACC</p>
-                <p className="font-medium">{(result.wacc * 100).toFixed(1)}% a.a.</p>
+                <p className="text-muted-foreground text-xs">Taxa de desconto (r)</p>
+                <p className="font-medium">{(result.discountRate * 100).toFixed(0)}% a.a.</p>
               </div>
               <div>
-                <p className="text-muted-foreground text-xs">Crescimento FCL (g)</p>
+                <p className="text-muted-foreground text-xs">Crescimento (g)</p>
                 <p className="font-medium">{(result.growthRate * 100).toFixed(1)}% a.a.</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs">Crescimento terminal</p>
-                <p className="font-medium">{(result.terminalGrowth * 100).toFixed(0)}% a.a.</p>
               </div>
             </div>
           </>

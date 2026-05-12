@@ -16,6 +16,11 @@ export interface StockData {
   profitMargins: number | null
   dividendYield: number | null
   earningsGrowth: number | null
+  freeCashflow: number | null
+  sharesOutstanding: number | null
+  beta: number | null
+  totalDebt: number | null
+  marketCap: number | null
   sector: string | null
   sectorKey: string | null
   dividends: DividendEntry[]
@@ -47,10 +52,30 @@ export interface DCFResult {
   price: number | null
   isValid: boolean
   reason: string | null
+  wacc: number
+  growthRate: number
+  terminalGrowth: number
+  years: number
+  fcfPerShare: number | null
+}
+
+export interface LynchResult {
+  price: number | null
+  isValid: boolean
+  reason: string | null
+  growthRate: number | null
+}
+
+export interface BuffettResult {
+  price: number | null        // valor intrínseco
+  safetyPrice: number | null  // com margem de segurança de 30%
+  isValid: boolean
+  reason: string | null
   discountRate: number
   growthRate: number
   terminalGrowth: number
   years: number
+  oePerShare: number | null
 }
 
 export interface AveragePriceResult {
@@ -120,8 +145,6 @@ export function calculateBazinPrice(dividends: DividendEntry[]): BazinResult {
 
 // ─── DDM (Gordon Growth Model) ────────────────────────────────────────────────
 // P = DPA × (1 + g) / (r - g)
-// r = taxa de desconto (padrão 13% — Selic + prêmio de risco Brasil)
-// g = crescimento perpétuo dos dividendos (padrão 3%)
 
 export function calculateDDMPrice(
   dividends: DividendEntry[],
@@ -130,60 +153,156 @@ export function calculateDDMPrice(
 ): DDMResult {
   const annualDividend = getAnnualDividend(dividends)
   const base = { discountRate, growthRate, annualDividend }
-
   if (annualDividend <= 0) {
     return { ...base, price: null, isValid: false, reason: "Sem dividendos nos últimos 12 meses" }
   }
   if (discountRate <= growthRate) {
     return { ...base, price: null, isValid: false, reason: "Taxa de desconto deve ser maior que crescimento" }
   }
-
-  const price = (annualDividend * (1 + growthRate)) / (discountRate - growthRate)
-  return { ...base, price, isValid: true, reason: null }
+  return { ...base, price: (annualDividend * (1 + growthRate)) / (discountRate - growthRate), isValid: true, reason: null }
 }
 
-// ─── DCF (Fluxo de Caixa Descontado — 2 estágios) ────────────────────────────
-// Estágio 1: projeta LPA por N anos à taxa g, descontado a r
-// Estágio 2: valor terminal com crescimento perpétuo g_terminal
-// P = Σ [EPS×(1+g)^t / (1+r)^t] + TV/(1+r)^N
-// TV = EPS×(1+g)^N × (1+g_t) / (r - g_t)
+// ─── DCF (FCL descontado pelo WACC — 2 estágios) ─────────────────────────────
+// P = Σ FCL/ação × (1+g)^t / (1+WACC)^t  +  TV / (1+WACC)^N
+// TV = FCL/ação × (1+g)^N × (1+g_t) / (WACC - g_t)
+//
+// WACC = Ke × E/(D+E)  +  Kd × (1-t) × D/(D+E)
+// Ke   = Selic + β × prêmio de risco Brasil (5,5%)
+// Kd   = 12% (custo médio corporativo estimado no Brasil)
+// t    = 34% (IRPJ + CSLL)
+
+function calcWACC(
+  beta: number,
+  marketCap: number,
+  totalDebt: number
+): number {
+  const RF = 0.13        // Selic
+  const MRP = 0.055      // Prêmio de risco de mercado Brasil
+  const KD = 0.12        // Custo da dívida corporativa BR
+  const TAX = 0.34       // Alíquota efetiva IRPJ+CSLL
+
+  const ke = RF + beta * MRP
+  const e = Math.max(marketCap, 0)
+  const d = Math.max(totalDebt, 0)
+  const total = e + d
+  if (total <= 0) return ke
+
+  const wacc = (ke * e) / total + (KD * (1 - TAX) * d) / total
+  return Math.min(Math.max(wacc, 0.05), 0.40) // clamp 5%–40%
+}
 
 export function calculateDCFPrice(
-  eps: number | null,
+  freeCashflow: number | null,
+  sharesOutstanding: number | null,
+  beta: number | null,
+  marketCap: number | null,
+  totalDebt: number | null,
   earningsGrowth: number | null,
-  discountRate = 0.13,
   terminalGrowth = 0.03,
   years = 5
 ): DCFResult {
-  // clamp earningsGrowth entre -20% e +30%, default 5%
   const growthRate =
-    earningsGrowth !== null
-      ? Math.min(Math.max(earningsGrowth, -0.2), 0.3)
-      : 0.05
-  const base = { discountRate, growthRate, terminalGrowth, years }
+    earningsGrowth !== null ? Math.min(Math.max(earningsGrowth, -0.2), 0.3) : 0.05
 
-  if (eps === null) {
-    return { ...base, price: null, isValid: false, reason: "LPA não disponível" }
+  const wacc = calcWACC(beta ?? 1.0, marketCap ?? 0, totalDebt ?? 0)
+  const base = { wacc, growthRate, terminalGrowth, years, fcfPerShare: null as number | null }
+
+  if (freeCashflow === null || sharesOutstanding === null || sharesOutstanding <= 0) {
+    return { ...base, price: null, isValid: false, reason: "FCL ou ações em circulação não disponíveis" }
   }
-  if (eps <= 0) {
-    return { ...base, price: null, isValid: false, reason: "LPA negativo — DCF não aplicável" }
+  if (freeCashflow <= 0) {
+    return { ...base, price: null, isValid: false, reason: "FCL negativo — DCF não aplicável" }
   }
-  if (discountRate <= terminalGrowth) {
-    return { ...base, price: null, isValid: false, reason: "Taxa de desconto deve ser maior que crescimento terminal" }
+  if (wacc <= terminalGrowth) {
+    return { ...base, price: null, isValid: false, reason: "WACC deve ser maior que crescimento terminal" }
   }
 
-  // Estágio 1
+  const fcfPerShare = freeCashflow / sharesOutstanding
+
   let pv1 = 0
   for (let t = 1; t <= years; t++) {
-    pv1 += (eps * Math.pow(1 + growthRate, t)) / Math.pow(1 + discountRate, t)
+    pv1 += (fcfPerShare * Math.pow(1 + growthRate, t)) / Math.pow(1 + wacc, t)
   }
 
-  // Estágio 2 — valor terminal
-  const epsN = eps * Math.pow(1 + growthRate, years)
-  const terminalValue = (epsN * (1 + terminalGrowth)) / (discountRate - terminalGrowth)
+  const fcfN = fcfPerShare * Math.pow(1 + growthRate, years)
+  const terminalValue = (fcfN * (1 + terminalGrowth)) / (wacc - terminalGrowth)
+  const pvTerminal = terminalValue / Math.pow(1 + wacc, years)
+
+  return { ...base, fcfPerShare, price: pv1 + pvTerminal, isValid: true, reason: null }
+}
+
+// ─── Warren Buffett — Owner Earnings (Valor Intrínseco) ──────────────────────
+// P = Σ OE/ação × (1+g)^t / (1+r)^t  +  TV / (1+r)^N
+// TV = OE/ação × (1+g)^N × (1+g_t) / (r - g_t)
+//
+// Diferenças do DCF clássico:
+//  - r = 10% (taxa livre de risco; Buffett não adiciona prêmio de risco)
+//  - g cap = 15% (crescimento conservador — evita hipergrowth)
+//  - N = 10 anos (perspectiva de longo prazo)
+//  - Margem de Segurança de 30%: preço de compra = Intrínseco × 0,70
+
+export function calculateBuffettPrice(
+  freeCashflow: number | null,
+  sharesOutstanding: number | null,
+  earningsGrowth: number | null,
+  discountRate = 0.10,
+  terminalGrowth = 0.03,
+  marginOfSafety = 0.30,
+  years = 10
+): BuffettResult {
+  const growthRate =
+    earningsGrowth !== null ? Math.min(Math.max(earningsGrowth, 0), 0.15) : 0.05
+  const base = { discountRate, growthRate, terminalGrowth, years, oePerShare: null as number | null }
+
+  if (freeCashflow === null || sharesOutstanding === null || sharesOutstanding <= 0) {
+    return { ...base, price: null, safetyPrice: null, isValid: false, reason: "Owner Earnings ou ações em circulação não disponíveis" }
+  }
+  if (freeCashflow <= 0) {
+    return { ...base, price: null, safetyPrice: null, isValid: false, reason: "Owner Earnings negativo — método não aplicável" }
+  }
+  if (discountRate <= terminalGrowth) {
+    return { ...base, price: null, safetyPrice: null, isValid: false, reason: "Taxa de desconto deve ser maior que crescimento terminal" }
+  }
+
+  const oePerShare = freeCashflow / sharesOutstanding
+
+  let pv1 = 0
+  for (let t = 1; t <= years; t++) {
+    pv1 += (oePerShare * Math.pow(1 + growthRate, t)) / Math.pow(1 + discountRate, t)
+  }
+
+  const oeN = oePerShare * Math.pow(1 + growthRate, years)
+  const terminalValue = (oeN * (1 + terminalGrowth)) / (discountRate - terminalGrowth)
   const pvTerminal = terminalValue / Math.pow(1 + discountRate, years)
 
-  return { ...base, price: pv1 + pvTerminal, isValid: true, reason: null }
+  const intrinsic = pv1 + pvTerminal
+  const safetyPrice = intrinsic * (1 - marginOfSafety)
+
+  return { ...base, oePerShare, price: intrinsic, safetyPrice, isValid: true, reason: null }
+}
+
+// ─── Peter Lynch — Preço PEG ──────────────────────────────────────────────────
+// Ação está justa quando PEG = 1  →  P/L = g(%)  →  P = LPA × g(%)
+// Lynch considera crescimento sustentável entre 10% e 25%
+
+export function calculateLynchPrice(
+  eps: number | null,
+  earningsGrowth: number | null
+): LynchResult {
+  const growthRate = earningsGrowth !== null ? earningsGrowth : null
+
+  if (eps === null) {
+    return { price: null, isValid: false, reason: "LPA não disponível", growthRate }
+  }
+  if (eps <= 0) {
+    return { price: null, isValid: false, reason: "LPA negativo — Lynch não aplicável", growthRate }
+  }
+  if (growthRate === null || growthRate <= 0) {
+    return { price: null, isValid: false, reason: "Crescimento não disponível ou negativo", growthRate }
+  }
+
+  const growthPct = growthRate * 100 // Lynch usa o número percentual (ex: 15, não 0.15)
+  return { price: eps * growthPct, isValid: true, reason: null, growthRate }
 }
 
 // ─── Média dos métodos ────────────────────────────────────────────────────────
@@ -192,18 +311,21 @@ export function calculateAveragePrice(
   graham: GrahamResult,
   bazin: BazinResult,
   ddm: DDMResult,
-  dcf: DCFResult
+  dcf: DCFResult,
+  lynch: LynchResult,
+  buffett: BuffettResult
 ): AveragePriceResult {
   const methods = [
     { label: "Graham", price: graham.isValid ? graham.price : null, isValid: graham.isValid },
     { label: "Bazin", price: bazin.isValid ? bazin.price : null, isValid: bazin.isValid },
     { label: "DDM", price: ddm.isValid ? ddm.price : null, isValid: ddm.isValid },
     { label: "DCF", price: dcf.isValid ? dcf.price : null, isValid: dcf.isValid },
+    { label: "Lynch", price: lynch.isValid ? lynch.price : null, isValid: lynch.isValid },
+    { label: "Buffett", price: buffett.isValid ? buffett.safetyPrice : null, isValid: buffett.isValid },
   ]
   const validPrices = methods.filter((m) => m.price !== null).map((m) => m.price as number)
-  const price = validPrices.length > 0
-    ? validPrices.reduce((a, b) => a + b, 0) / validPrices.length
-    : null
+  const price =
+    validPrices.length > 0 ? validPrices.reduce((a, b) => a + b, 0) / validPrices.length : null
   return { price, methods }
 }
 
@@ -246,7 +368,9 @@ export function classifyViability(
   const { price, eps, priceEarnings, priceToBook, returnOnEquity, debtToEquity, profitMargins, dividendYield, dividends, sectorKey } = data
 
   const dividendYearsCount = getDividendYearsCount(dividends)
-  const effectiveDY = dividendYield ?? (bazinResult.annualDividend > 0 && price > 0 ? bazinResult.annualDividend / price : null)
+  const effectiveDY =
+    dividendYield ??
+    (bazinResult.annualDividend > 0 && price > 0 ? bazinResult.annualDividend / price : null)
 
   const criteria: CriteriaCheck[] = [
     {
