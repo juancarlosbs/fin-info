@@ -19,6 +19,9 @@ import {
   calculateGrahamPrice,
   calculateBazinPrice,
   calculateDDMPrice,
+  calculateDCFPrice,
+  calculateLynchPrice,
+  calculateBuffettPrice,
   calculateAveragePrice,
   classifyViability,
 } from "@/lib/graham-bazin"
@@ -58,15 +61,29 @@ export function TickerSearch() {
   const grahamResult = data ? calculateGrahamPrice(data.eps, data.bookValue) : null
   const bazinResult = data ? calculateBazinPrice(data.dividends) : null
   const ddmResult = data ? calculateDDMPrice(data.dividends) : null
+  const dcfResult = data
+    ? calculateDCFPrice(
+        data.freeCashflow,
+        data.sharesOutstanding,
+        data.beta,
+        data.marketCap,
+        data.totalDebt,
+        data.earningsGrowth
+      )
+    : null
+  const lynchResult = data ? calculateLynchPrice(data.eps, data.earningsGrowth) : null
+  const buffettResult = data
+    ? calculateBuffettPrice(data.freeCashflow, data.sharesOutstanding, data.earningsGrowth)
+    : null
 
   const averageResult =
-    grahamResult && bazinResult && ddmResult
-      ? calculateAveragePrice(grahamResult, bazinResult, ddmResult)
+    grahamResult && bazinResult && ddmResult && dcfResult && lynchResult && buffettResult
+      ? calculateAveragePrice(grahamResult, bazinResult, ddmResult, dcfResult, lynchResult, buffettResult)
       : null
 
   const viabilityResult =
-    data && grahamResult && bazinResult
-      ? classifyViability(data, grahamResult, bazinResult)
+    data && grahamResult && bazinResult && buffettResult
+      ? classifyViability(data, grahamResult, bazinResult, buffettResult)
       : null
 
   return (
@@ -75,7 +92,7 @@ export function TickerSearch() {
         <CardHeader>
           <CardTitle>Análise de Ações — Valuation</CardTitle>
           <CardDescription>
-            Graham · Bazin · DDM — preço médio justo e classificação de viabilidade.
+            Graham · Bazin · DDM · DCF (WACC) · Peter Lynch · Buffett — preço médio justo e classificação de viabilidade.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -99,7 +116,7 @@ export function TickerSearch() {
         </CardContent>
       </Card>
 
-      {data && grahamResult && bazinResult && ddmResult && averageResult && viabilityResult && (
+      {data && grahamResult && bazinResult && ddmResult && dcfResult && lynchResult && buffettResult && averageResult && viabilityResult && (
         <>
           <StockHeader data={data} />
 
@@ -109,9 +126,9 @@ export function TickerSearch() {
             <GrahamCard data={data} result={grahamResult} />
             <BazinCard data={data} result={bazinResult} />
             <DDMCard data={data} result={ddmResult} />
-            <DCFCard />
-            <LynchCard />
-            <BuffettCard />
+            <DCFCard data={data} result={dcfResult} />
+            <LynchCard data={data} result={lynchResult} />
+            <BuffettCard data={data} result={buffettResult} />
           </div>
 
           <ViabilityCard result={viabilityResult} />
