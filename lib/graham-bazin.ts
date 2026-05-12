@@ -3,6 +3,11 @@ export interface DividendEntry {
   rate: number
 }
 
+export interface EarningsEntry {
+  year: number
+  netIncome: number
+}
+
 export interface StockData {
   symbol: string
   name: string
@@ -11,19 +16,12 @@ export interface StockData {
   bookValue: number | null
   priceToBook: number | null
   priceEarnings: number | null
-  returnOnEquity: number | null
-  debtToEquity: number | null
-  profitMargins: number | null
   dividendYield: number | null
-  earningsGrowth: number | null
-  freeCashflow: number | null
   sharesOutstanding: number | null
-  beta: number | null
-  totalDebt: number | null
-  marketCap: number | null
   sector: string | null
   sectorKey: string | null
   dividends: DividendEntry[]
+  earningsHistory: EarningsEntry[]
 }
 
 export interface GrahamResult {
@@ -116,6 +114,17 @@ export function calculateGrahamPrice(eps: number | null, bookValue: number | nul
 }
 
 // ─── Bazin ────────────────────────────────────────────────────────────────────
+
+export function getConsistentEarningsLabel(history: EarningsEntry[]): { label: string; passed: boolean } {
+  if (history.length === 0) return { label: "Histórico não disponível", passed: false }
+  const positive = history.filter((e) => e.netIncome > 0).length
+  const total = history.length
+  const years = history.map((e) => e.year).sort((a, b) => a - b)
+  return {
+    label: `${positive}/${total} anos positivos (${years[0]}–${years[years.length - 1]})`,
+    passed: positive === total,
+  }
+}
 
 export function getAnnualDividend(dividends: DividendEntry[]): number {
   const oneYearAgo = new Date()
@@ -363,12 +372,13 @@ export function classifyViability(
   grahamResult: GrahamResult,
   bazinResult: BazinResult
 ): ViabilityResult {
-  const { price, eps, priceEarnings, priceToBook, returnOnEquity, debtToEquity, profitMargins, dividendYield, dividends, sectorKey } = data
+  const { price, eps, priceEarnings, priceToBook, dividendYield, dividends, sectorKey, earningsHistory } = data
 
   const dividendYearsCount = getDividendYearsCount(dividends)
   const effectiveDY =
     dividendYield ??
     (bazinResult.annualDividend > 0 && price > 0 ? bazinResult.annualDividend / price : null)
+  const earningsConsistency = getConsistentEarningsLabel(earningsHistory)
 
   const criteria: CriteriaCheck[] = [
     {
@@ -378,10 +388,10 @@ export function classifyViability(
       weight: 2,
     },
     {
-      label: "ROE ≥ 10%",
-      value: returnOnEquity !== null ? `${(returnOnEquity * 100).toFixed(1)}%` : "Não disponível",
-      passed: returnOnEquity !== null && returnOnEquity >= 0.1,
-      weight: 1,
+      label: "Lucros consistentes (histórico)",
+      value: earningsConsistency.label,
+      passed: earningsConsistency.passed,
+      weight: 2,
     },
     {
       label: "P/L ≤ 15 (Graham)",
@@ -405,18 +415,6 @@ export function classifyViability(
       label: "Dividendos consistentes (≥ 5/5 anos)",
       value: `${dividendYearsCount}/5 anos com pagamento`,
       passed: dividendYearsCount >= 5,
-      weight: 1,
-    },
-    {
-      label: "Endividamento baixo (Dív/PL ≤ 100%)",
-      value: debtToEquity !== null ? `${debtToEquity.toFixed(0)}%` : "Não disponível",
-      passed: debtToEquity !== null && debtToEquity <= 100,
-      weight: 1,
-    },
-    {
-      label: "Margem líquida positiva",
-      value: profitMargins !== null ? `${(profitMargins * 100).toFixed(1)}%` : "Não disponível",
-      passed: profitMargins !== null && profitMargins > 0,
       weight: 1,
     },
     {
