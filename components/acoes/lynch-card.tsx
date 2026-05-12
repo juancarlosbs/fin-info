@@ -1,10 +1,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { type StockData, type DCFResult, formatBRL } from "@/lib/graham-bazin"
+import { type StockData, type LynchResult, formatBRL } from "@/lib/graham-bazin"
 
-interface DCFCardProps {
+interface LynchCardProps {
   data: StockData
-  result: DCFResult
+  result: LynchResult
 }
 
 function upside(current: number, target: number): string {
@@ -12,30 +12,28 @@ function upside(current: number, target: number): string {
   return `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`
 }
 
-export function DCFCard({ data, result }: DCFCardProps) {
+export function LynchCard({ data, result }: LynchCardProps) {
   const isUndervalued = result.price !== null && data.price < result.price
 
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <CardTitle className="text-base">DCF — Fluxo de Caixa Descontado</CardTitle>
+          <CardTitle className="text-base">Peter Lynch — PEG</CardTitle>
           {result.isValid && (
             <Badge variant={isUndervalued ? "default" : "secondary"}>
               {isUndervalued ? "Abaixo do valor justo" : "Acima do valor justo"}
             </Badge>
           )}
         </div>
-        <p className="text-xs text-muted-foreground font-mono">
-          Σ FCL/(1+WACC)ⁿ + Valor Terminal · {result.years} anos
-        </p>
+        <p className="text-xs text-muted-foreground font-mono">LPA × crescimento (%)</p>
       </CardHeader>
       <CardContent className="space-y-4">
         {result.isValid && result.price !== null ? (
           <>
             <div className="flex items-end justify-between">
               <div>
-                <p className="text-xs text-muted-foreground">Preço Justo (DCF)</p>
+                <p className="text-xs text-muted-foreground">Preço Justo (Lynch)</p>
                 <p className="text-3xl font-bold text-foreground">{formatBRL(result.price)}</p>
               </div>
               <div className="text-right">
@@ -47,22 +45,37 @@ export function DCFCard({ data, result }: DCFCardProps) {
             </div>
             <div className="grid grid-cols-2 gap-3 text-sm border-t pt-4">
               <div>
-                <p className="text-muted-foreground text-xs">FCL/ação</p>
+                <p className="text-muted-foreground text-xs">LPA</p>
+                <p className="font-medium">{data.eps !== null ? formatBRL(data.eps) : "—"}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">Crescimento dos lucros</p>
                 <p className="font-medium">
-                  {result.fcfPerShare !== null ? formatBRL(result.fcfPerShare) : "—"}
+                  {result.growthRate !== null ? `${(result.growthRate * 100).toFixed(1)}%` : "—"}
                 </p>
               </div>
               <div>
-                <p className="text-muted-foreground text-xs">WACC</p>
-                <p className="font-medium">{(result.wacc * 100).toFixed(1)}% a.a.</p>
+                <p className="text-muted-foreground text-xs">PEG atual</p>
+                <p className={`font-medium ${
+                  data.priceEarnings !== null && result.growthRate !== null
+                    ? data.priceEarnings / (result.growthRate * 100) <= 1
+                      ? "text-green-600"
+                      : "text-red-500"
+                    : ""
+                }`}>
+                  {data.priceEarnings !== null && result.growthRate !== null
+                    ? (data.priceEarnings / (result.growthRate * 100)).toFixed(2)
+                    : "—"}
+                  <span className="text-muted-foreground font-normal"> (justo = 1,0)</span>
+                </p>
               </div>
               <div>
-                <p className="text-muted-foreground text-xs">Crescimento FCL (g)</p>
-                <p className="font-medium">{(result.growthRate * 100).toFixed(1)}% a.a.</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs">Crescimento terminal</p>
-                <p className="font-medium">{(result.terminalGrowth * 100).toFixed(0)}% a.a.</p>
+                <p className="text-muted-foreground text-xs">P/L atual</p>
+                <p className="font-medium">
+                  {data.priceEarnings !== null && data.priceEarnings > 0
+                    ? data.priceEarnings.toFixed(1)
+                    : "—"}
+                </p>
               </div>
             </div>
           </>
